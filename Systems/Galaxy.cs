@@ -102,6 +102,12 @@ public class Galaxy
             {
                 completed.Add(quest);
             }
+            else if (quest.ObjectiveType == "collect" && quest.TargetItem != null &&
+                     quest.TargetSystem == player.CurrentSystemId &&
+                     player.QuestItems.Any(qi => qi.Id == quest.TargetItem))
+            {
+                completed.Add(quest);
+            }
         }
 
         foreach (var quest in completed)
@@ -109,6 +115,8 @@ public class Galaxy
             player.Credits += quest.RewardCredits;
             if (quest.RewardUpgrade != null && !player.OwnedUpgrades.Contains(quest.RewardUpgrade))
                 player.OwnedUpgrades.Add(quest.RewardUpgrade);
+            if (quest.TargetItem != null)
+                player.QuestItems.RemoveAll(qi => qi.Id == quest.TargetItem);
             player.CompletedQuests.Add(quest.Id);
             ActiveQuests.Remove(quest);
         }

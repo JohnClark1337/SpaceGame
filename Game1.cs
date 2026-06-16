@@ -24,6 +24,7 @@ public class Game1 : Game
     private float _aiTickTimer;
 
     public RouteManager RouteManager => _routeManager;
+    public Galaxy Galaxy => _galaxy;
 
     private KeyboardState _prevKeyboard;
     private MouseState _prevMouse;

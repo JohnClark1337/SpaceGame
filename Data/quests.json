@@ -40,6 +40,17 @@
       "targetCount": 1,
       "rewardCredits": 200,
       "giverSystem": "barnard"
+    },
+    {
+      "id": "rescue_princess",
+      "name": "Rescue the Princess",
+      "description": "The princess of Proxima fled her wedding and is now drifting in a lifepod somewhere in the system. Find her and bring her back to the station.",
+      "objectiveType": "collect",
+      "targetSystem": "proxima",
+      "targetItem": "princess_lifepod",
+      "targetCount": 1,
+      "rewardCredits": 300,
+      "giverSystem": "proxima"
     }
   ]
 }

@@ -42,6 +42,9 @@ public class SystemScene
     private bool _gameOver;
     private List<ExplosionDebris> _debris = new();
 
+    private Body _lifepod;
+    private bool _lifepodActive;
+
     private struct ExplosionDebris
     {
         public Vector2 Start;
@@ -141,6 +144,7 @@ public class SystemScene
         _particlesInitialized = false;
         _nearEdge = false;
         _nearPlanet = false;
+        _lifepodActive = false;
 
         float spawnAngle = RandF() * MathF.Tau;
         _player.Position = new Vector2(
@@ -299,6 +303,30 @@ public class SystemScene
                     _nearPlanet = true;
             }
 
+            // Lifepod: activate when quest is active, position if not yet placed
+            bool rescueQuestActive = _game.Galaxy.ActiveQuests.Any(q => q.Id == "rescue_princess");
+            if (rescueQuestActive && !_lifepodActive)
+            {
+                PositionLifepod();
+                _lifepodActive = true;
+            }
+            else if (!rescueQuestActive)
+            {
+                _lifepodActive = false;
+            }
+
+            // Lifepod pickup
+            if (_lifepodActive)
+            {
+                float podDist = Vector2.Distance(_player.Position, new Vector2(_lifepod.X, _lifepod.Y));
+                if (podDist < 100f && JustPressed(keyboard, Keys.E))
+                {
+                    _player.QuestItems.Add(new InventoryEntry { Id = "princess_lifepod", Quantity = 1 });
+                    _lifepodActive = false;
+                    _game.Galaxy.CheckQuestProgress(_player);
+                }
+            }
+
             float distToStation = Vector2.Distance(_player.Position, new Vector2(_station.X, _station.Y));
             if (distToStation < 150f)
             {
@@ -333,6 +361,7 @@ public class SystemScene
         {
             if (JustPressed(keyboard, Keys.Escape))
                 _docked = false;
+            _game.Galaxy.CheckQuestProgress(_player);
         }
     }
 
@@ -423,6 +452,33 @@ public class SystemScene
         float sx = starScreenX + _station.X * ZOOM;
         float sy = starScreenY + _station.Y * ZOOM;
         DrawStation(sb, pixel, font, sx, sy, _station, t);
+
+        // Lifepod
+        if (_lifepodActive)
+        {
+            float lx = starScreenX + _lifepod.X * ZOOM;
+            float ly = starScreenY + _lifepod.Y * ZOOM;
+            float lr = 6f * ZOOM;
+            float pulse = MathF.Sin(t * 3f) * 0.15f + 1f;
+            for (int i = 4; i >= 0; i--)
+            {
+                float gr = lr * pulse + i * 4f * ZOOM;
+                float ga = 0.03f + i * 0.05f;
+                FillCircle(sb, pixel, lx, ly, gr, Color.Lime * ga);
+            }
+            FillCircle(sb, pixel, lx, ly, lr * pulse * 0.8f, Color.Lime * 0.7f);
+            DrawCircle(sb, pixel, lx, ly, lr * pulse * 0.8f, Color.Lime);
+
+            float dist = Vector2.Distance(_player.Position, new Vector2(_lifepod.X, _lifepod.Y));
+            if (dist < 150f)
+            {
+                string prompt = "[E] Pick up lifepod";
+                var promptSz = font.MeasureString(prompt);
+                DrawSpacedText(sb, font, prompt,
+                    new Microsoft.Xna.Framework.Vector2(lx - promptSz.X / 2f, ly + lr * pulse + 10f),
+                    Color.White * (0.7f + MathF.Sin(t * 4f) * 0.3f));
+            }
+        }
 
         // Player ship (always at center)
         DrawShip(sb, pixel, center, t);
@@ -893,6 +949,58 @@ public class SystemScene
             return new Color(r, g, b);
         }
         return Color.White;
+    }
+
+    private void PositionLifepod()
+    {
+        float margin = _star.BodyRadius + 100f;
+        float minDistFromPlanet = 200f;
+        for (int attempt = 0; attempt < 50; attempt++)
+        {
+            float angle = RandF() * MathF.Tau;
+            float dist = margin + RandF() * (_systemRadius - margin - 50f);
+            float px = MathF.Cos(angle) * dist;
+            float py = MathF.Sin(angle) * dist;
+
+            bool overlaps = false;
+            foreach (var p in _planets)
+            {
+                float pd = Vector2.Distance(new Vector2(px, py), new Vector2(p.X, p.Y));
+                if (pd < minDistFromPlanet)
+                {
+                    overlaps = true;
+                    break;
+                }
+            }
+            if (_system.Station != null)
+            {
+                float sd = Vector2.Distance(new Vector2(px, py), new Vector2(_station.X, _station.Y));
+                if (sd < minDistFromPlanet)
+                    overlaps = true;
+            }
+
+            if (!overlaps)
+            {
+                _lifepod = new Body
+                {
+                    Name = "Lifepod",
+                    X = px,
+                    Y = py,
+                    BodyRadius = 6f,
+                    Color = Color.Lime
+                };
+                return;
+            }
+        }
+        // Fallback: place near center but not on star
+        _lifepod = new Body
+        {
+            Name = "Lifepod",
+            X = margin,
+            Y = margin,
+            BodyRadius = 6f,
+            Color = Color.Lime
+        };
     }
 
     private static void DrawLine(SpriteBatch sb, Texture2D pixel, float x1, float y1, float x2, float y2, Color color)
