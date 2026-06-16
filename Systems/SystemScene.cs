@@ -32,6 +32,7 @@ public class SystemScene
     private float _systemRadius;
     private bool _docked;
     private bool _nearEdge;
+    private bool _nearPlanet;
     private bool _initialized;
     private float _temperature;
     private bool _exploding;
@@ -139,6 +140,7 @@ public class SystemScene
         _spawnRadius = _systemRadius * 0.80f;
         _particlesInitialized = false;
         _nearEdge = false;
+        _nearPlanet = false;
 
         float spawnAngle = RandF() * MathF.Tau;
         _player.Position = new Vector2(
@@ -249,7 +251,7 @@ public class SystemScene
                 (dist - _star.BodyRadius) / (_systemRadius - _star.BodyRadius), 0f, 1f);
             _temperature = 1f - MathF.Pow(norm, 0.5f);
 
-            if (_temperature >= 1f)
+            if (!_exploding && (_temperature >= 1f || _player.Health <= 0))
             {
                 _exploding = true;
                 _explosionTimer = 0f;
@@ -279,6 +281,22 @@ public class SystemScene
                     });
                 }
                 return;
+            }
+
+            // Planet proximity and collision
+            _nearPlanet = false;
+            for (int i = 0; i < _planets.Count; i++)
+            {
+                var p = _planets[i];
+                float planetDist = Vector2.Distance(_player.Position, new Vector2(p.X, p.Y));
+                float pr = p.BodyRadius;
+                if (planetDist < pr + 30f)
+                {
+                    _player.Health = 0;
+                    break;
+                }
+                if (planetDist < pr * 2.5f)
+                    _nearPlanet = true;
             }
 
             float distToStation = Vector2.Distance(_player.Position, new Vector2(_station.X, _station.Y));
@@ -423,7 +441,7 @@ public class SystemScene
         DrawMiniMap(sb, pixel, font, screenW, screenH);
 
         // Exit warning
-        if (_nearEdge && !_docked)
+        if (_nearEdge && !_docked && !_exploding && !_gameOver)
         {
             string msg = "Exiting System";
             var msgSize = titleFont.MeasureString(msg);
@@ -435,6 +453,20 @@ public class SystemScene
 
             sb.DrawString(titleFont, msg,
                 new Microsoft.Xna.Framework.Vector2(msgX, msgY), c);
+        }
+
+        // Collision warning
+        if (_nearPlanet && !_docked && !_exploding && !_gameOver)
+        {
+            string msg = "Collision Warning";
+            var msgSize = titleFont.MeasureString(msg);
+            float msgX = (screenW - msgSize.X) / 2f;
+            float msgY = screenH * 0.38f;
+
+            byte flash = (byte)((MathF.Sin(t * 4f) * 0.3f + 0.5f) * 255);
+            sb.DrawString(titleFont, msg,
+                new Microsoft.Xna.Framework.Vector2(msgX, msgY),
+                new Color(255, 200, 0, (int)flash));
         }
 
         // Temperature bar (bottom-left)
@@ -606,21 +638,60 @@ public class SystemScene
         var left = pos + Vector2.FromAngle(angle + 2.4f) * len * 0.65f;
         var right = pos + Vector2.FromAngle(angle - 2.4f) * len * 0.65f;
 
+        // Thrust flames (drawn first, underneath ship)
+        float speed = _player.Velocity.Length();
+        if (speed > 20f)
+        {
+            float flameBase = MathF.Min(speed / 5f, 12f) * ZOOM;
+            Vector2[] origins = {
+                left * 0.67f + right * 0.33f,
+                (left + right) * 0.5f,
+                left * 0.33f + right * 0.67f
+            };
+            for (int i = 0; i < 3; i++)
+            {
+                float fLen = flameBase * (i == 1 ? 1f : 0.5f);
+                var ftip = origins[i] + Vector2.FromAngle(angle + MathF.PI) * fLen;
+                var fside1 = origins[i] + Vector2.FromAngle(angle + MathF.PI + 0.3f) * 3f * ZOOM;
+                var fside2 = origins[i] + Vector2.FromAngle(angle + MathF.PI - 0.3f) * 3f * ZOOM;
+                DrawLine(sb, pixel, ftip.X, ftip.Y, fside1.X, fside1.Y, Color.Orange);
+                DrawLine(sb, pixel, ftip.X, ftip.Y, fside2.X, fside2.Y, Color.Orange);
+            }
+        }
+
+        // Main triangle hull
         DrawLine(sb, pixel, tip.X, tip.Y, left.X, left.Y, Color.White);
         DrawLine(sb, pixel, tip.X, tip.Y, right.X, right.Y, Color.White);
         DrawLine(sb, pixel, left.X, left.Y, right.X, right.Y, Color.White);
 
-        float speed = _player.Velocity.Length();
-        if (speed > 20f)
-        {
-            float flameLen = MathF.Min(speed / 5f, 12f) * ZOOM;
-            var flameTip = pos + Vector2.FromAngle(angle + MathF.PI) * (flameLen + 5f * ZOOM);
-            var flameLeft = pos + Vector2.FromAngle(angle + 2.8f) * 5f * ZOOM;
-            var flameRight = pos + Vector2.FromAngle(angle - 2.8f) * 5f * ZOOM;
+        // Small cockpit window near front
+        float cp = 0.7f;
+        var cockpit = pos + Vector2.FromAngle(angle) * len * cp;
+        float cs = 2f * ZOOM;
+        var cf = cockpit + Vector2.FromAngle(angle) * cs;
+        var cl = cockpit + Vector2.FromAngle(angle + 1.5f) * cs * 0.4f;
+        var cr = cockpit + Vector2.FromAngle(angle - 1.5f) * cs * 0.4f;
+        DrawLine(sb, pixel, cf.X, cf.Y, cl.X, cl.Y, Color.Cyan * 0.6f);
+        DrawLine(sb, pixel, cf.X, cf.Y, cr.X, cr.Y, Color.Cyan * 0.6f);
 
-            DrawLine(sb, pixel, flameTip.X, flameTip.Y, flameLeft.X, flameLeft.Y, Color.Orange);
-            DrawLine(sb, pixel, flameTip.X, flameTip.Y, flameRight.X, flameRight.Y, Color.Orange);
-        }
+        // Hull panel lines
+        var rearMid = (left + right) * 0.5f;
+        float hullLen = (rearMid - cockpit).Length();
+
+        // Centerline from cockpit to rear
+        DrawLine(sb, pixel, cockpit.X, cockpit.Y, rearMid.X, rearMid.Y, Color.White * 0.5f);
+
+        // Side lines parallel to hull edges
+        float sideInset = len * 0.025f;
+        var siL = cockpit + Vector2.FromAngle(angle + 1.5f) * sideInset;
+        var siR = cockpit + Vector2.FromAngle(angle - 1.5f) * sideInset;
+        var lEdge = (left - tip).Normalized();
+        var rEdge = (right - tip).Normalized();
+        var lEnd = siL + lEdge * hullLen * 0.8f;
+        var rEnd = siR + rEdge * hullLen * 0.8f;
+        DrawLine(sb, pixel, siL.X, siL.Y, lEnd.X, lEnd.Y, Color.White * 0.35f);
+        DrawLine(sb, pixel, siR.X, siR.Y, rEnd.X, rEnd.Y, Color.White * 0.35f);
+        DrawLine(sb, pixel, lEnd.X, lEnd.Y, rEnd.X, rEnd.Y, Color.White * 0.35f);
     }
 
     private void DrawDockedMenu(SpriteBatch sb, Texture2D pixel, SpriteFont font, SpriteFont titleFont,

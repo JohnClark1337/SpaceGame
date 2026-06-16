@@ -668,22 +668,60 @@ public class Game1 : Game
         var left = center + Vector2.FromAngle(angle + 2.4f) * len * 0.65f;
         var right = center + Vector2.FromAngle(angle - 2.4f) * len * 0.65f;
 
+        // Thrust flames (drawn first, underneath ship)
+        float speed = _player.Velocity.Length();
+        if (speed > 20f)
+        {
+            float flameBase = MathF.Min(speed / 5f, 12f);
+            Vector2[] origins = {
+                left * 0.67f + right * 0.33f,
+                (left + right) * 0.5f,
+                left * 0.33f + right * 0.67f
+            };
+            for (int i = 0; i < 3; i++)
+            {
+                float fLen = flameBase * (i == 1 ? 1f : 0.5f);
+                var ftip = origins[i] + Vector2.FromAngle(angle + MathF.PI) * fLen;
+                var fside1 = origins[i] + Vector2.FromAngle(angle + MathF.PI + 0.3f) * 3f;
+                var fside2 = origins[i] + Vector2.FromAngle(angle + MathF.PI - 0.3f) * 3f;
+                DrawLine(ftip.X, ftip.Y, fside1.X, fside1.Y, Color.Orange);
+                DrawLine(ftip.X, ftip.Y, fside2.X, fside2.Y, Color.Orange);
+            }
+        }
+
+        // Main triangle hull
         DrawLine(tip.X, tip.Y, left.X, left.Y, Color.White);
         DrawLine(tip.X, tip.Y, right.X, right.Y, Color.White);
         DrawLine(left.X, left.Y, right.X, right.Y, Color.White);
 
-        // Thrust flame
-        float speed = _player.Velocity.Length();
-        if (speed > 20f)
-        {
-            float flameLen = MathF.Min(speed / 5f, 12f);
-            var flameTip = center + Vector2.FromAngle(angle + MathF.PI) * (flameLen + 5f);
-            var flameLeft = center + Vector2.FromAngle(angle + 2.8f) * 5f;
-            var flameRight = center + Vector2.FromAngle(angle - 2.8f) * 5f;
+        // Small cockpit window near front
+        float cp = 0.7f;
+        var cockpit = center + Vector2.FromAngle(angle) * len * cp;
+        float cs = 2f;
+        var cf = cockpit + Vector2.FromAngle(angle) * cs;
+        var cl = cockpit + Vector2.FromAngle(angle + 1.5f) * cs * 0.4f;
+        var cr = cockpit + Vector2.FromAngle(angle - 1.5f) * cs * 0.4f;
+        DrawLine(cf.X, cf.Y, cl.X, cl.Y, Color.Cyan * 0.6f);
+        DrawLine(cf.X, cf.Y, cr.X, cr.Y, Color.Cyan * 0.6f);
 
-            DrawLine(flameTip.X, flameTip.Y, flameLeft.X, flameLeft.Y, Color.Orange);
-            DrawLine(flameTip.X, flameTip.Y, flameRight.X, flameRight.Y, Color.Orange);
-        }
+        // Hull panel lines
+        var rearMid = (left + right) * 0.5f;
+
+        // Centerline from cockpit to rear
+        DrawLine(cockpit.X, cockpit.Y, rearMid.X, rearMid.Y, Color.White * 0.5f);
+
+        // Side lines parallel to hull edges
+        float sideInset = len * 0.025f;
+        var siL = cockpit + Vector2.FromAngle(angle + 1.5f) * sideInset;
+        var siR = cockpit + Vector2.FromAngle(angle - 1.5f) * sideInset;
+        float hullLen = (rearMid - cockpit).Length();
+        var lEdge = (left - tip).Normalized();
+        var rEdge = (right - tip).Normalized();
+        var lEnd = siL + lEdge * hullLen * 0.8f;
+        var rEnd = siR + rEdge * hullLen * 0.8f;
+        DrawLine(siL.X, siL.Y, lEnd.X, lEnd.Y, Color.White * 0.35f);
+        DrawLine(siR.X, siR.Y, rEnd.X, rEnd.Y, Color.White * 0.35f);
+        DrawLine(lEnd.X, lEnd.Y, rEnd.X, rEnd.Y, Color.White * 0.35f);
     }
 
     private void DrawHUD(Vector2 center)
