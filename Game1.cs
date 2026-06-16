@@ -66,20 +66,37 @@ public class Game1 : Game
 
     private void NewGame()
     {
-        _player.Position = Vector2.Zero;
         _player.Velocity = Vector2.Zero;
         _player.Angle = 0;
         _player.Credits = 50;
+        _player.Health = 50;
         _player.OwnedUpgrades.Clear();
         _player.CompletedQuests.Clear();
         _player.CurrentSystemId = null;
 
         _galaxy.LoadData();
+        _galaxy.ActiveQuests.Clear();
+        _galaxy.TargetSystem = null;
 
-        _galaxyPlayerPos = Vector2.Zero;
+        var startSys = _galaxy.FindSystemById("proxima");
+        if (startSys != null)
+        {
+            _player.Position = new Vector2(startSys.X, startSys.Y);
+            _player.CurrentSystemId = startSys.Id;
+            _galaxy.CurrentSystem = startSys;
+        }
+        else
+        {
+            _player.Position = Vector2.Zero;
+        }
+
+        _galaxyPlayerPos = _player.Position;
         _galaxyPlayerVel = Vector2.Zero;
         _viewMode = ViewMode.Galaxy;
         _currentMenu = MenuType.None;
+
+        // Consume any held keys so they don't re-trigger this frame
+        _prevKeyboard = Keyboard.GetState();
 
         _systemScene = new SystemScene(_player);
     }
@@ -196,10 +213,15 @@ public class Game1 : Game
                     _menuSelection++;
                 if (JustPressed(keyboard, Keys.Up) || JustPressed(keyboard, Keys.W))
                     _menuSelection--;
-                if (JustPressed(keyboard, Keys.Enter) && _menuSelection == 2)
-                    Exit();
+                if (JustPressed(keyboard, Keys.Enter))
+                {
+                    if (_menuSelection == 0) // New Game
+                        NewGame();
+                    else if (_menuSelection == 3) // Quit
+                        Exit();
+                }
 
-                int maxItem = 2;
+                int maxItem = 3;
                 if (_menuSelection < 0) _menuSelection = maxItem;
                 if (_menuSelection > maxItem) _menuSelection = 0;
             }

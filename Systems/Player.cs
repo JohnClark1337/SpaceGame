@@ -10,6 +10,8 @@ public class Player
     public float RotationVelocity { get; set; }
 
     public int Credits { get; set; } = 50;
+    public int Health { get; set; } = 50;
+    public int MaxHealth { get; set; } = 50;
     public List<string> OwnedUpgrades { get; set; } = new();
     public List<string> CompletedQuests { get; set; } = new();
     public string? CurrentSystemId { get; set; }

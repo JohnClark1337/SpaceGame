@@ -51,7 +51,7 @@ public class SystemScene
         public float Alpha;
     }
 
-    private struct Particle { public Vector2 Pos; public float Brightness; }
+    private struct Particle { public Vector2 Pos; public float Brightness; public float SpeedMult; }
     private Particle[] _particles = new Particle[80];
     private bool _particlesInitialized;
     private Vector2 _waypointPosition;
@@ -123,6 +123,19 @@ public class SystemScene
             _systemRadius = _station.OrbitRadius;
         _systemRadius = MathF.Max(_systemRadius, 1f) * 1.1f;
 
+        // Ensure station orbits outside overheating range
+        if (_system.Station != null)
+        {
+            float warningNorm = MathF.Pow(0.25f, 1f / 0.5f);
+            float minSafe = _star.BodyRadius + warningNorm * (_systemRadius - _star.BodyRadius);
+            if (_station.OrbitRadius < minSafe)
+            {
+                _station.OrbitRadius = minSafe;
+                if (_station.OrbitRadius * 1.1f > _systemRadius)
+                    _systemRadius = _station.OrbitRadius * 1.1f;
+            }
+        }
+
         _spawnRadius = _systemRadius * 0.80f;
         _particlesInitialized = false;
         _nearEdge = false;
@@ -142,10 +155,12 @@ public class SystemScene
         int sh = _game.ViewHeight;
         for (int i = 0; i < _particles.Length; i++)
         {
+            float b = RandF() * 0.5f + 0.3f;
             _particles[i] = new Particle
             {
                 Pos = new Vector2(RandF() * sw, RandF() * sh),
-                Brightness = RandF() * 0.5f + 0.3f
+                Brightness = b,
+                SpeedMult = 0.5f + b * 1.5f
             };
         }
         _particlesInitialized = true;
@@ -228,10 +243,11 @@ public class SystemScene
 
             _player.Update(dt);
 
-            // Temperature
+            // Temperature (non-linear: slow rise far away, spikes near star)
             float dist = _player.Position.Length();
-            _temperature = 1f - MathHelper.Clamp(
+            float norm = MathHelper.Clamp(
                 (dist - _star.BodyRadius) / (_systemRadius - _star.BodyRadius), 0f, 1f);
+            _temperature = 1f - MathF.Pow(norm, 0.5f);
 
             if (_temperature >= 1f)
             {
@@ -279,11 +295,11 @@ public class SystemScene
             for (int i = 0; i < _particles.Length; i++)
             {
                 var p = _particles[i];
-                p.Pos -= particleVel;
-                if (p.Pos.X < -10) { p.Pos.X = _game.ViewWidth + 10; p.Pos.Y = RandF() * _game.ViewHeight; }
-                if (p.Pos.X > _game.ViewWidth + 10) { p.Pos.X = -10; p.Pos.Y = RandF() * _game.ViewHeight; }
-                if (p.Pos.Y < -10) { p.Pos.Y = _game.ViewHeight + 10; p.Pos.X = RandF() * _game.ViewWidth; }
-                if (p.Pos.Y > _game.ViewHeight + 10) { p.Pos.Y = -10; p.Pos.X = RandF() * _game.ViewWidth; }
+                p.Pos -= particleVel * p.SpeedMult;
+                if (p.Pos.X < -10) { p.Pos.X = _game.ViewWidth + 10; p.Pos.Y = RandF() * _game.ViewHeight; p.Brightness = RandF() * 0.5f + 0.3f; p.SpeedMult = 0.5f + p.Brightness * 1.5f; }
+                if (p.Pos.X > _game.ViewWidth + 10) { p.Pos.X = -10; p.Pos.Y = RandF() * _game.ViewHeight; p.Brightness = RandF() * 0.5f + 0.3f; p.SpeedMult = 0.5f + p.Brightness * 1.5f; }
+                if (p.Pos.Y < -10) { p.Pos.Y = _game.ViewHeight + 10; p.Pos.X = RandF() * _game.ViewWidth; p.Brightness = RandF() * 0.5f + 0.3f; p.SpeedMult = 0.5f + p.Brightness * 1.5f; }
+                if (p.Pos.Y > _game.ViewHeight + 10) { p.Pos.Y = -10; p.Pos.X = RandF() * _game.ViewWidth; p.Brightness = RandF() * 0.5f + 0.3f; p.SpeedMult = 0.5f + p.Brightness * 1.5f; }
                 _particles[i] = p;
             }
 
@@ -337,7 +353,7 @@ public class SystemScene
             foreach (var pt in _particles)
             {
                 byte b = (byte)(pt.Brightness * 180);
-                sb.Draw(pixel, new Microsoft.Xna.Framework.Rectangle((int)pt.Pos.X, (int)pt.Pos.Y, 2, 2),
+                sb.Draw(pixel, new Microsoft.Xna.Framework.Rectangle((int)pt.Pos.X, (int)pt.Pos.Y, 4, 4),
                     new Color(b, b, b, b));
             }
         }
@@ -424,13 +440,14 @@ public class SystemScene
         // Temperature bar (bottom-left)
         if (!_exploding && !_gameOver && !_docked)
         {
-            int barX = 20;
-            int barY = screenH - 160;
+            int barX = 40;
+            int barY = screenH - 200;
             int barW = 14;
             int barH = 120;
 
+            var tempLabel = font.MeasureString("TEMP");
             sb.DrawString(font, "TEMP",
-                new Microsoft.Xna.Framework.Vector2(barX - 2, barY - 20), Color.Gray * 0.7f);
+                new Microsoft.Xna.Framework.Vector2(barX + barW / 2 - tempLabel.X / 2, barY - 22), Color.Gray * 0.7f);
 
             // Background
             sb.Draw(pixel, new Microsoft.Xna.Framework.Rectangle(barX, barY, barW, barH),
@@ -452,6 +469,32 @@ public class SystemScene
             var pctSize = font.MeasureString(pctStr);
             sb.DrawString(font, pctStr,
                 new Microsoft.Xna.Framework.Vector2(barX + barW / 2 - pctSize.X / 2, barY + barH + 4),
+                Color.Gray * 0.7f);
+
+            // Health bar (to the right of temp bar)
+            int hbX = barX + barW + 28;
+            int hbY = barY;
+            int hbW = 14;
+            int hbH = barH;
+
+            var hpLabel = font.MeasureString("HP");
+            sb.DrawString(font, "HP",
+                new Microsoft.Xna.Framework.Vector2(hbX + hbW / 2 - hpLabel.X / 2, hbY - 22), Color.Gray * 0.7f);
+
+            sb.Draw(pixel, new Microsoft.Xna.Framework.Rectangle(hbX, hbY, hbW, hbH),
+                new Color(0, 20, 0, 180));
+            DrawRect(sb, pixel, hbX, hbY, hbW, hbH, Color.Gray * 0.3f);
+
+            float healthPct = (float)_player.Health / _player.MaxHealth;
+            int hFillH = (int)(hbH * healthPct);
+            int hFillY = hbY + hbH - hFillH;
+            sb.Draw(pixel, new Microsoft.Xna.Framework.Rectangle(hbX + 2, hFillY, hbW - 4, hFillH),
+                new Color(0, 200, 0, 220));
+
+            string hpStr = $"{_player.Health}";
+            var hpSize = font.MeasureString(hpStr);
+            sb.DrawString(font, hpStr,
+                new Microsoft.Xna.Framework.Vector2(hbX + hbW / 2 - hpSize.X / 2, hbY + hbH + 4),
                 Color.Gray * 0.7f);
         }
 
