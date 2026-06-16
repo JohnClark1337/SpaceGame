@@ -1,0 +1,15 @@
+## .NET
+bin/
+obj/
+*.user
+*.suo
+*.cache
+*.log
+
+## MonoGame
+Content/obj/
+*.mgcontent
+
+## IDE
+.vs/
+*.sln.docstates

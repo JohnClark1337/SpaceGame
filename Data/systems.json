@@ -1,0 +1,135 @@
+{
+  "systems": [
+    {
+      "id": "proxima",
+      "name": "Proxima Centauri",
+      "x": 0,
+      "y": 0,
+      "radius": 40,
+      "color": "FF6644",
+      "description": "A small red dwarf star orbited by several rocky worlds. A good starting point for new pilots.",
+      "connections": ["alpha", "barnard", "tribune"],
+      "services": ["fuel", "repair", "market"],
+      "hostility": 0,
+      "faction": "Terran Federation",
+      "starRadius": 800,
+      "planets": [
+        { "name": "Proxima I", "orbitRadius": 6000, "radius": 810, "color": "AA8866", "orbitSpeed": 0.0125 },
+        { "name": "Proxima II", "orbitRadius": 9600, "radius": 630, "color": "88AA66", "orbitSpeed": 0.0075 }
+      ],
+      "station": { "name": "Proxima Station", "orbitRadius": 4200, "orbitSpeed": 0.00125 }
+    },
+    {
+      "id": "alpha",
+      "name": "Alpha Centauri",
+      "x": 1200,
+      "y": -300,
+      "radius": 50,
+      "color": "FFDD88",
+      "description": "The brightest star in the Centaurus constellation. Home to a thriving trade port.",
+      "connections": ["proxima", "vega", "cygnus"],
+      "services": ["fuel", "repair", "market", "upgrades"],
+      "hostility": 1,
+      "faction": "Terran Federation",
+      "starRadius": 1000,
+      "planets": [
+        { "name": "Alpha I", "orbitRadius": 7200, "radius": 1350, "color": "88AACC", "orbitSpeed": 0.009375 },
+        { "name": "Alpha II", "orbitRadius": 12000, "radius": 990, "color": "CCAA88", "orbitSpeed": 0.00625 },
+        { "name": "Alpha III", "orbitRadius": 16800, "radius": 720, "color": "AACC88", "orbitSpeed": 0.005 }
+      ],
+      "station": { "name": "Centauri Hub", "orbitRadius": 4800, "orbitSpeed": 0.0009375 }
+    },
+    {
+      "id": "barnard",
+      "name": "Barnard's Star",
+      "x": -800,
+      "y": -900,
+      "radius": 30,
+      "color": "FF8844",
+      "description": "A dim red dwarf on the fringe of Federation space. Rumors of pirates persist.",
+      "connections": ["proxima", "tribune"],
+      "services": ["fuel"],
+      "hostility": 4,
+      "faction": "Independent",
+      "starRadius": 600,
+      "planets": [
+        { "name": "Barnard I", "orbitRadius": 5400, "radius": 990, "color": "888866", "orbitSpeed": 0.01125 }
+      ],
+      "station": { "name": "Fringe Post", "orbitRadius": 3600, "orbitSpeed": 0.00140625 }
+    },
+    {
+      "id": "tribune",
+      "name": "Tribune",
+      "x": -1400,
+      "y": 500,
+      "radius": 35,
+      "color": "AACCFF",
+      "description": "A mysterious blue-white star system. Little is known about its planets.",
+      "connections": ["proxima", "barnard", "vega"],
+      "services": ["fuel", "market"],
+      "hostility": 2,
+      "faction": "Free Worlds Alliance",
+      "starRadius": 700,
+      "planets": [
+        { "name": "Tribune I", "orbitRadius": 6600, "radius": 720, "color": "88CCCC", "orbitSpeed": 0.009375 },
+        { "name": "Tribune II", "orbitRadius": 10800, "radius": 540, "color": "CCCCAA", "orbitSpeed": 0.006875 }
+      ],
+      "station": { "name": "Tribune Orbital", "orbitRadius": 4500, "orbitSpeed": 0.00109375 }
+    },
+    {
+      "id": "vega",
+      "name": "Vega",
+      "x": 2400,
+      "y": 100,
+      "radius": 55,
+      "color": "AADDFF",
+      "description": "A brilliant blue star and a hub of scientific research. The Vega station offers rare upgrades.",
+      "connections": ["alpha", "tribune", "cygnus", "draco"],
+      "services": ["fuel", "repair", "market", "upgrades"],
+      "hostility": 1,
+      "faction": "Terran Federation",
+      "starRadius": 1100,
+      "planets": [
+        { "name": "Vega I", "orbitRadius": 8400, "radius": 1530, "color": "6699CC", "orbitSpeed": 0.00875 },
+        { "name": "Vega II", "orbitRadius": 13200, "radius": 1170, "color": "7799AA", "orbitSpeed": 0.005625 },
+        { "name": "Vega III", "orbitRadius": 18000, "radius": 810, "color": "88AABB", "orbitSpeed": 0.00375 }
+      ],
+      "station": { "name": "Vega Research Station", "orbitRadius": 5400, "orbitSpeed": 0.00078125 }
+    },
+    {
+      "id": "cygnus",
+      "name": "Cygnus Station",
+      "x": 1800,
+      "y": 1400,
+      "radius": 28,
+      "color": "FFEEAA",
+      "description": "A remote outpost built into an asteroid belt. A good place to lay low.",
+      "connections": ["alpha", "vega", "draco"],
+      "services": ["fuel", "market"],
+      "hostility": 3,
+      "faction": "Independent",
+      "starRadius": 500,
+      "planets": [],
+      "station": { "name": "Cygnus Outpost", "orbitRadius": 3000, "orbitSpeed": 0.0015625 }
+    },
+    {
+      "id": "draco",
+      "name": "Draco Prime",
+      "x": 3200,
+      "y": 1100,
+      "radius": 45,
+      "color": "FF8844",
+      "description": "The capital of the Free Worlds Alliance. Heavily fortified and prosperous.",
+      "connections": ["vega", "cygnus"],
+      "services": ["fuel", "repair", "market", "upgrades"],
+      "hostility": 0,
+      "faction": "Free Worlds Alliance",
+      "starRadius": 950,
+      "planets": [
+        { "name": "Draco Prime I", "orbitRadius": 7200, "radius": 1260, "color": "CCAA88", "orbitSpeed": 0.01 },
+        { "name": "Draco Prime II", "orbitRadius": 11400, "radius": 900, "color": "88CCAA", "orbitSpeed": 0.00625 }
+      ],
+      "station": { "name": "Draco Capital Station", "orbitRadius": 4620, "orbitSpeed": 0.0009375 }
+    }
+  ]
+}

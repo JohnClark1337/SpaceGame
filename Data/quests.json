@@ -1,0 +1,45 @@
+{
+  "quests": [
+    {
+      "id": "first_journey",
+      "name": "First Journey",
+      "description": "Travel to Alpha Centauri to register your ship with the Terran Federation.",
+      "objectiveType": "travel",
+      "targetSystem": "alpha",
+      "targetCount": 1,
+      "rewardCredits": 100,
+      "giverSystem": "proxima"
+    },
+    {
+      "id": "barnard_scan",
+      "name": "Barnard Recon",
+      "description": "The Federation wants a status report on Barnard's Star. Fly there and scan the system.",
+      "objectiveType": "travel",
+      "targetSystem": "barnard",
+      "targetCount": 1,
+      "rewardCredits": 150,
+      "giverSystem": "alpha"
+    },
+    {
+      "id": "vega_delivery",
+      "name": "Research Materials",
+      "description": "Transport experimental materials from Vega to the researchers at Cygnus Station.",
+      "objectiveType": "travel",
+      "targetSystem": "cygnus",
+      "targetCount": 1,
+      "rewardCredits": 250,
+      "rewardUpgrade": "speed_boost",
+      "giverSystem": "vega"
+    },
+    {
+      "id": "tribune_mystery",
+      "name": "Tribune Signal",
+      "description": "A strange signal is coming from the Tribune system. Investigate its origin.",
+      "objectiveType": "travel",
+      "targetSystem": "tribune",
+      "targetCount": 1,
+      "rewardCredits": 200,
+      "giverSystem": "barnard"
+    }
+  ]
+}
