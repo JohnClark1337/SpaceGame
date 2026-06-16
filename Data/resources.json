@@ -1,0 +1,60 @@
+{
+  "resources": [
+    {
+      "id": "food_rations",
+      "name": "Food Rations",
+      "description": "Basic sustenance for long journeys",
+      "basePrice": 5,
+      "volume": 1
+    },
+    {
+      "id": "scrap_metal",
+      "name": "Scrap Metal",
+      "description": "Recycled hull plating and structural beams",
+      "basePrice": 8,
+      "volume": 2
+    },
+    {
+      "id": "electronics",
+      "name": "Electronics",
+      "description": "Circuit boards and navigation chips",
+      "basePrice": 25,
+      "volume": 1
+    },
+    {
+      "id": "fuel_cells",
+      "name": "Fuel Cells",
+      "description": "Standard hydrogen fuel cells",
+      "basePrice": 15,
+      "volume": 2
+    },
+    {
+      "id": "medical_supplies",
+      "name": "Medical Supplies",
+      "description": "First aid kits and pharmaceuticals",
+      "basePrice": 30,
+      "volume": 1
+    },
+    {
+      "id": "luxury_goods",
+      "name": "Luxury Goods",
+      "description": "High-end consumer products from core worlds",
+      "basePrice": 100,
+      "volume": 3
+    },
+    {
+      "id": "raw_minerals",
+      "name": "Raw Minerals",
+      "description": "Unrefined ore and mineral deposits",
+      "basePrice": 12,
+      "volume": 3
+    },
+    {
+      "id": "weapon_parts",
+      "name": "Weapon Parts",
+      "description": "Components for ship-mounted weaponry",
+      "basePrice": 45,
+      "volume": 2
+    }
+  ]
+}

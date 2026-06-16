@@ -414,7 +414,7 @@ public class SystemScene
             DrawCircle(sb, pixel, px, py, pr * 0.8f, p.Color);
 
             var labelSize = font.MeasureString(p.Name);
-            sb.DrawString(font, p.Name,
+            DrawSpacedText(sb, font, p.Name,
                 new Microsoft.Xna.Framework.Vector2(px - labelSize.X / 2f, py + pr + 4f),
                 Color.White * 0.6f);
         }
@@ -451,7 +451,7 @@ public class SystemScene
             byte flash = (byte)((MathF.Sin(t * 3f) * 0.3f + 0.5f) * 255);
             Color c = new Color(255, 0, 0, (int)flash);
 
-            sb.DrawString(titleFont, msg,
+            DrawSpacedText(sb, titleFont, msg,
                 new Microsoft.Xna.Framework.Vector2(msgX, msgY), c);
         }
 
@@ -464,7 +464,7 @@ public class SystemScene
             float msgY = screenH * 0.38f;
 
             byte flash = (byte)((MathF.Sin(t * 4f) * 0.3f + 0.5f) * 255);
-            sb.DrawString(titleFont, msg,
+            DrawSpacedText(sb, titleFont, msg,
                 new Microsoft.Xna.Framework.Vector2(msgX, msgY),
                 new Color(255, 200, 0, (int)flash));
         }
@@ -478,7 +478,7 @@ public class SystemScene
             int barH = 120;
 
             var tempLabel = font.MeasureString("TEMP");
-            sb.DrawString(font, "TEMP",
+            DrawSpacedText(sb, font, "TEMP",
                 new Microsoft.Xna.Framework.Vector2(barX + barW / 2 - tempLabel.X / 2, barY - 22), Color.Gray * 0.7f);
 
             // Background
@@ -499,7 +499,7 @@ public class SystemScene
             int pct = (int)(_temperature * 100);
             string pctStr = $"{pct}%";
             var pctSize = font.MeasureString(pctStr);
-            sb.DrawString(font, pctStr,
+            DrawSpacedText(sb, font, pctStr,
                 new Microsoft.Xna.Framework.Vector2(barX + barW / 2 - pctSize.X / 2, barY + barH + 4),
                 Color.Gray * 0.7f);
 
@@ -510,7 +510,7 @@ public class SystemScene
             int hbH = barH;
 
             var hpLabel = font.MeasureString("HP");
-            sb.DrawString(font, "HP",
+            DrawSpacedText(sb, font, "HP",
                 new Microsoft.Xna.Framework.Vector2(hbX + hbW / 2 - hpLabel.X / 2, hbY - 22), Color.Gray * 0.7f);
 
             sb.Draw(pixel, new Microsoft.Xna.Framework.Rectangle(hbX, hbY, hbW, hbH),
@@ -525,7 +525,7 @@ public class SystemScene
 
             string hpStr = $"{_player.Health}";
             var hpSize = font.MeasureString(hpStr);
-            sb.DrawString(font, hpStr,
+            DrawSpacedText(sb, font, hpStr,
                 new Microsoft.Xna.Framework.Vector2(hbX + hbW / 2 - hpSize.X / 2, hbY + hbH + 4),
                 Color.Gray * 0.7f);
         }
@@ -547,7 +547,7 @@ public class SystemScene
                 (int)(msgX - 10), (int)(screenH * 0.5f - 5), (int)bgW, (int)bgH),
                 new Color(20, 0, 0, 180));
 
-            sb.DrawString(titleFont, msg,
+            DrawSpacedText(sb, titleFont, msg,
                 new Microsoft.Xna.Framework.Vector2(msgX, screenH * 0.5f), c);
         }
 
@@ -576,13 +576,13 @@ public class SystemScene
             var msgSize = titleFont.MeasureString(msg);
             float msgX = (screenW - msgSize.X) / 2f;
             float msgY = screenH * 0.35f;
-            sb.DrawString(titleFont, msg,
+            DrawSpacedText(sb, titleFont, msg,
                 new Microsoft.Xna.Framework.Vector2(msgX, msgY), Color.Red);
 
             string sub = "Press ENTER to continue";
             var subSize = font.MeasureString(sub);
             float subX = (screenW - subSize.X) / 2f;
-            sb.DrawString(font, sub,
+            DrawSpacedText(sb, font, sub,
                 new Microsoft.Xna.Framework.Vector2(subX, msgY + 60), Color.Gray);
         }
     }
@@ -612,7 +612,7 @@ public class SystemScene
         // Label
         var label = station.Name;
         var labelSize = font.MeasureString(label);
-        sb.DrawString(font, label,
+        DrawSpacedText(sb, font, label,
             new Microsoft.Xna.Framework.Vector2(sx - labelSize.X / 2f, sy + r + 4f),
             Color.Cyan);
 
@@ -623,7 +623,7 @@ public class SystemScene
             string prompt = "[E] Dock";
             var ps = font.MeasureString(prompt);
             byte flash = (byte)((MathF.Sin(t * 4f) * 0.3f + 0.7f) * 255);
-            sb.DrawString(font, prompt,
+            DrawSpacedText(sb, font, prompt,
                 new Microsoft.Xna.Framework.Vector2(sx - ps.X / 2f, sy - r - 22f),
                 new Color(255, 255, 100, (int)flash));
         }
@@ -713,25 +713,25 @@ public class SystemScene
         int textX = px + 20;
         int textY = py + 20;
 
-        sb.DrawString(titleFont, $"{_station.Name}",
+        DrawSpacedText(sb, titleFont, $"{_station.Name}",
             new Microsoft.Xna.Framework.Vector2(textX, textY), Color.Cyan);
         textY += 50;
 
-        sb.DrawString(font, $"Credits: {_player.Credits}",
+        DrawSpacedText(sb, font, $"Credits: {_player.Credits}",
             new Microsoft.Xna.Framework.Vector2(textX, textY), Color.Yellow);
         textY += 30;
 
         bool hasUpgrades = _system.Services.Contains("upgrades") || _system.Services.Contains("market");
         if (hasUpgrades)
         {
-            sb.DrawString(titleFont, "--- Upgrades Available ---",
+            DrawSpacedText(sb, titleFont, "--- Upgrades Available ---",
                 new Microsoft.Xna.Framework.Vector2(textX, textY), Color.Lime);
             textY += 30;
 
             var upgrades = _game.GetUpgradesForSystem(_system.Id);
             if (upgrades.Count == 0)
             {
-                sb.DrawString(font, "  None available",
+                DrawSpacedText(sb, font, "  None available",
                     new Microsoft.Xna.Framework.Vector2(textX, textY), Color.Gray);
                 textY += 24;
             }
@@ -741,10 +741,10 @@ public class SystemScene
                 {
                     bool canAfford = _player.Credits >= up.Cost;
                     Color c = canAfford ? Color.White : Color.Gray * 0.5f;
-                    sb.DrawString(font, $"  {up.Name} - {up.Cost}cr",
+                    DrawSpacedText(sb, font, $"  {up.Name} - {up.Cost}cr",
                         new Microsoft.Xna.Framework.Vector2(textX, textY), c);
                     textY += 18;
-                    sb.DrawString(font, $"    {up.Description}",
+                    DrawSpacedText(sb, font, $"    {up.Description}",
                         new Microsoft.Xna.Framework.Vector2(textX, textY), Color.White * 0.4f);
                     textY += 22;
                 }
@@ -752,7 +752,7 @@ public class SystemScene
         }
         else
         {
-            sb.DrawString(font, "No services available at this station.",
+            DrawSpacedText(sb, font, "No services available at this station.",
                 new Microsoft.Xna.Framework.Vector2(textX, textY), Color.Gray);
             textY += 24;
         }
@@ -762,40 +762,40 @@ public class SystemScene
         var quests = _game.GetQuestsForSystem(_system.Id);
         if (quests.Count > 0)
         {
-            sb.DrawString(titleFont, "--- Quests ---",
+            DrawSpacedText(sb, titleFont, "--- Quests ---",
                 new Microsoft.Xna.Framework.Vector2(textX, textY), Color.Gold);
             textY += 30;
 
             foreach (var q in quests)
             {
-                sb.DrawString(font, $"  {q.Name} - {q.RewardCredits}cr",
+                DrawSpacedText(sb, font, $"  {q.Name} - {q.RewardCredits}cr",
                     new Microsoft.Xna.Framework.Vector2(textX, textY), Color.White);
                 textY += 18;
-                sb.DrawString(font, $"    {q.Description}",
+                DrawSpacedText(sb, font, $"    {q.Description}",
                     new Microsoft.Xna.Framework.Vector2(textX, textY), Color.White * 0.5f);
                 textY += 24;
             }
         }
 
-        sb.DrawString(font, "[E] Buy selected  |  [Q] Accept quest  |  [ESC] Undock",
+        DrawSpacedText(sb, font, "[E] Buy selected  |  [Q] Accept quest  |  [ESC] Undock",
             new Microsoft.Xna.Framework.Vector2(textX, screenH - py - 30), Color.Gray * 0.7f);
     }
 
     private void DrawSystemHUD(SpriteBatch sb, SpriteFont font, int screenW, int screenH,
         Vector2 shipPos, float stationX, float stationY)
     {
-        sb.DrawString(font, $"{_system.Name} - Interior",
+        DrawSpacedText(sb, font, $"{_system.Name} - Interior",
             new Microsoft.Xna.Framework.Vector2(10, 10), Color.Cyan);
 
         float distFromCenter = _player.Position.Length();
-        sb.DrawString(font, $"Distance from star: {(int)distFromCenter}u",
+        DrawSpacedText(sb, font, $"Distance from star: {(int)distFromCenter}u",
             new Microsoft.Xna.Framework.Vector2(10, 30), Color.Gray * 0.7f);
 
         float distToStation = Vector2.Distance(_player.Position, new Vector2(_station.X, _station.Y));
-        sb.DrawString(font, $"Distance to station: {(int)distToStation}u",
+        DrawSpacedText(sb, font, $"Distance to station: {(int)distToStation}u",
             new Microsoft.Xna.Framework.Vector2(10, 50), Color.Gray * 0.7f);
 
-        sb.DrawString(font, "[ESC] Pause",
+        DrawSpacedText(sb, font, "[ESC] Pause",
             new Microsoft.Xna.Framework.Vector2(10, screenH - 30), Color.Gray * 0.5f);
     }
 
@@ -820,7 +820,7 @@ public class SystemScene
 
         string distText = $"{(int)dist}u";
         var ts = font.MeasureString(distText);
-        sb.DrawString(font, distText,
+        DrawSpacedText(sb, font, distText,
             new Microsoft.Xna.Framework.Vector2(arrowPos.X - ts.X / 2f, arrowPos.Y + arrowSize + 3f),
             c * 0.7f);
     }
@@ -877,7 +877,7 @@ public class SystemScene
         FillCircle(sb, pixel, mx + 4, iconY + 3, 3f, Color.LightBlue);
         DrawLine(sb, pixel, mx + 4, iconY, mx + 4, iconY + 2, Color.Cyan);
         string wpLabel = _system.Station?.Name ?? "None";
-        sb.DrawString(font, wpLabel,
+        DrawSpacedText(sb, font, wpLabel,
             new Microsoft.Xna.Framework.Vector2(mx + 10, iconY - 2), Color.LightBlue * 0.8f);
     }
 
@@ -953,6 +953,36 @@ public class SystemScene
             float y2 = cy + MathF.Sin(a2) * r;
             DrawLine(sb, pixel, cx, cy, x1, y1, color);
             DrawLine(sb, pixel, x1, y1, x2, y2, color);
+        }
+    }
+
+    private static void DrawSpacedText(SpriteBatch sb, SpriteFont font, string text, Microsoft.Xna.Framework.Vector2 position, Color color)
+    {
+        if (text.Length == 0) return;
+
+        string[] parts = text.Split(' ');
+        if (parts.Length <= 1)
+        {
+            sb.DrawString(font, text, position, color);
+            return;
+        }
+
+        float spaceW = font.MeasureString(" ").X;
+        if (spaceW < 1f) spaceW = font.MeasureString("M").X;
+
+        float x = position.X;
+        float y = position.Y;
+        for (int i = 0; i < parts.Length; i++)
+        {
+            if (parts[i].Length > 0)
+            {
+                sb.DrawString(font, parts[i], new Microsoft.Xna.Framework.Vector2(x, y), color);
+                x += font.MeasureString(parts[i]).X + spaceW;
+            }
+            else
+            {
+                x += spaceW;
+            }
         }
     }
 }

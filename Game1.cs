@@ -19,7 +19,11 @@ public class Game1 : Game
 
     private readonly Player _player = new(new Vector2(0, 0));
     private readonly Galaxy _galaxy = new();
+    private RouteManager _routeManager = null!;
     private readonly Starfield _starfield = new();
+    private float _aiTickTimer;
+
+    public RouteManager RouteManager => _routeManager;
 
     private KeyboardState _prevKeyboard;
     private MouseState _prevMouse;
@@ -27,16 +31,22 @@ public class Game1 : Game
     private float _statusTimer;
     private GameTime _gameTime = new();
 
-    private enum MenuType { None, SystemInfo, QuestBoard, UpgradeShop, Pause }
+    private enum MenuType { None, SystemInfo, QuestBoard, UpgradeShop, Pause, Controls }
     private MenuType _currentMenu = MenuType.None;
     private StarSystemData? _menuSystem;
     private int _menuSelection;
 
     private enum ViewMode { Galaxy, System }
     private ViewMode _viewMode = ViewMode.Galaxy;
+
+    private enum Overlay { None, SystemMap, GalaxyMap, Inventory }
+    private Overlay _overlay = Overlay.None;
     private SystemScene _systemScene = null!;
     private Vector2 _galaxyPlayerPos;
     private Vector2 _galaxyPlayerVel;
+
+    private int _inventoryTab; // 0=quest items, 1=resources, 2=equipment
+    private int _invScroll;
 
     public GameTime GameTime => _gameTime;
     public int ViewWidth => ScreenWidth;
@@ -72,9 +82,14 @@ public class Game1 : Game
         _player.Health = 50;
         _player.OwnedUpgrades.Clear();
         _player.CompletedQuests.Clear();
+        _player.Resources.Clear();
+        _player.QuestItems.Clear();
+        _player.Equipment.Clear();
         _player.CurrentSystemId = null;
 
         _galaxy.LoadData();
+        _routeManager.SetGalaxy(_galaxy);
+        _aiTickTimer = 8f;
         _galaxy.ActiveQuests.Clear();
         _galaxy.TargetSystem = null;
 
@@ -117,6 +132,7 @@ public class Game1 : Game
     protected override void Initialize()
     {
         _galaxy.LoadData();
+        _routeManager = new RouteManager(_galaxy);
 
         if (_galaxy.Systems.Count == 0)
             _statusMessage = "ERROR: No systems loaded! Check Data/*.json files.";
@@ -162,6 +178,53 @@ public class Game1 : Game
         var keyboard = Keyboard.GetState();
         var mouse = Mouse.GetState();
 
+        // Overlay toggle (T = system map, G = galaxy map, I = inventory)
+        if (JustPressed(keyboard, Keys.T))
+        {
+            if (_overlay == Overlay.SystemMap)
+                _overlay = Overlay.None;
+            else if (_galaxy.CurrentSystem != null)
+                _overlay = Overlay.SystemMap;
+        }
+        if (JustPressed(keyboard, Keys.G))
+            _overlay = _overlay == Overlay.GalaxyMap ? Overlay.None : Overlay.GalaxyMap;
+
+        if (JustPressed(keyboard, Keys.I))
+        {
+            if (_overlay == Overlay.Inventory)
+                _overlay = Overlay.None;
+            else
+            {
+                _overlay = Overlay.Inventory;
+                _inventoryTab = 0;
+                _invScroll = 0;
+            }
+        }
+
+        if (_overlay != Overlay.None)
+        {
+            if (JustPressed(keyboard, Keys.Escape))
+                _overlay = Overlay.None;
+
+            if (_overlay == Overlay.Inventory)
+            {
+                if (JustPressed(keyboard, Keys.Left) || JustPressed(keyboard, Keys.Q))
+                    _inventoryTab = (_inventoryTab - 1 + 3) % 3;
+                if (JustPressed(keyboard, Keys.Right) || JustPressed(keyboard, Keys.E))
+                    _inventoryTab = (_inventoryTab + 1) % 3;
+                if (JustPressed(keyboard, Keys.Down) || JustPressed(keyboard, Keys.S))
+                    _invScroll++;
+                if (JustPressed(keyboard, Keys.Up) || JustPressed(keyboard, Keys.W))
+                    _invScroll--;
+                if (_invScroll < 0) _invScroll = 0;
+            }
+
+            _prevKeyboard = keyboard;
+            _prevMouse = mouse;
+            base.Update(gameTime);
+            return;
+        }
+
         if (_viewMode == ViewMode.Galaxy)
         {
             HandleInput(dt, keyboard, mouse);
@@ -200,6 +263,17 @@ public class Game1 : Game
             _prevKeyboard = keyboard;
             _prevMouse = mouse;
 
+            // AI commander tick (every 4 seconds)
+            if (_player.CurrentSystemId != null)
+            {
+                _aiTickTimer -= dt;
+                if (_aiTickTimer <= 0f)
+                {
+                    _aiTickTimer = 4f;
+                    _routeManager.AiTick(_player.CurrentSystemId);
+                }
+            }
+
             _starfield.Update(dt, _player.Velocity);
             CheckSystemProximity();
         }
@@ -217,13 +291,23 @@ public class Game1 : Game
                 {
                     if (_menuSelection == 0) // New Game
                         NewGame();
-                    else if (_menuSelection == 3) // Quit
+                    else if (_menuSelection == 3) // Controls
+                        _currentMenu = MenuType.Controls;
+                    else if (_menuSelection == 4) // Quit
                         Exit();
                 }
 
-                int maxItem = 3;
+                int maxItem = 4;
                 if (_menuSelection < 0) _menuSelection = maxItem;
                 if (_menuSelection > maxItem) _menuSelection = 0;
+            }
+            else if (_currentMenu == MenuType.Controls)
+            {
+                if (JustPressed(keyboard, Keys.Escape))
+                {
+                    _currentMenu = MenuType.Pause;
+                    _menuSelection = 3;
+                }
             }
             else
             {
@@ -289,8 +373,18 @@ public class Game1 : Game
             {
                 if (_menuSelection == 0) // New Game
                     NewGame();
-                else if (_menuSelection == 3) // Quit
+                else if (_menuSelection == 3) // Controls
+                    _currentMenu = MenuType.Controls;
+                else if (_menuSelection == 4) // Quit
                     Exit();
+            }
+        }
+        else if (_currentMenu == MenuType.Controls)
+        {
+            if (JustPressed(keyboard, Keys.Escape))
+            {
+                _currentMenu = MenuType.Pause;
+                _menuSelection = 3;
             }
         }
         else if (_currentMenu == MenuType.SystemInfo)
@@ -387,7 +481,7 @@ public class Game1 : Game
 
         int maxItem = 0;
         if (_currentMenu == MenuType.SystemInfo) maxItem = 2;
-        else if (_currentMenu == MenuType.Pause) maxItem = 3;
+        else if (_currentMenu == MenuType.Pause) maxItem = 4;
         else if (_currentMenu == MenuType.UpgradeShop)
         {
             if (_menuSystem != null)
@@ -475,6 +569,13 @@ public class Game1 : Game
         if (_statusTimer > 0)
             DrawStatusMessage();
 
+        if (_overlay == Overlay.SystemMap)
+            DrawSystemMapOverlay();
+        else if (_overlay == Overlay.GalaxyMap)
+            DrawGalaxyMapOverlay();
+        else if (_overlay == Overlay.Inventory)
+            DrawInventoryOverlay();
+
         _spriteBatch.End();
 
         base.Draw(gameTime);
@@ -519,8 +620,18 @@ public class Game1 : Game
 
                 bool nearby1 = Vector2.Distance(_player.Position, new Vector2(sys.X, sys.Y)) < 300f;
                 bool nearby2 = Vector2.Distance(_player.Position, new Vector2(other.X, other.Y)) < 300f;
-                float lineAlpha = (nearby1 || nearby2) ? 0.5f : 0.2f;
-                DrawLine(x1, y1, x2, y2, new Color(60, 80, 120) * lineAlpha);
+
+                bool blocked = _routeManager.IsBlocked(sys.Id, connId);
+                if (blocked)
+                {
+                    float pulse = MathF.Sin((float)_gameTime.TotalGameTime.TotalSeconds * 2f) * 0.2f + 0.6f;
+                    DrawLine(x1, y1, x2, y2, new Color(200, 30, 30) * pulse);
+                }
+                else
+                {
+                    float lineAlpha = (nearby1 || nearby2) ? 0.5f : 0.2f;
+                    DrawLine(x1, y1, x2, y2, new Color(60, 80, 120) * lineAlpha);
+                }
             }
         }
     }
@@ -579,7 +690,7 @@ public class Game1 : Game
                         new Microsoft.Xna.Framework.Rectangle((int)px2 - 4, (int)py2 - 2,
                             (int)ps.X + 8, (int)ps.Y + 4),
                         new Color(0, 0, 0, 160));
-                    _spriteBatch.DrawString(_font, prompt,
+                    DrawSpacedText(_font, prompt,
                         new Microsoft.Xna.Framework.Vector2(px2, py2),
                         new Color(255, 255, 100, (int)flash));
                 }
@@ -591,7 +702,7 @@ public class Game1 : Game
                 var hintSize = _font.MeasureString(hint);
                 float hx = sx - hintSize.X / 2f;
                 float hy = sy + drawRadius + labelSize.Y + 20f;
-                _spriteBatch.DrawString(_font, hint,
+                DrawSpacedText(_font, hint,
                     new Microsoft.Xna.Framework.Vector2(hx, hy),
                     Color.Gray * MathF.Max(0.2f, 1f - dist / 400f));
             }
@@ -604,7 +715,7 @@ public class Game1 : Game
                 new Microsoft.Xna.Framework.Rectangle((int)labelX - 4, (int)labelY - 2,
                     (int)labelSize.X + 8, (int)labelSize.Y + 4),
                 new Color(0, 0, 0, (int)bg));
-            _spriteBatch.DrawString(_font, label,
+            DrawSpacedText(_font, label,
                 new Microsoft.Xna.Framework.Vector2(labelX, labelY),
                 nearby ? Color.White : Color.White * 0.7f);
 
@@ -613,7 +724,7 @@ public class Game1 : Game
             {
                 string distLabel = $"{(int)dist}u";
                 var distSize = _font.MeasureString(distLabel);
-                _spriteBatch.DrawString(_font, distLabel,
+                DrawSpacedText(_font, distLabel,
                     new Microsoft.Xna.Framework.Vector2(sx - distSize.X / 2f, labelY + labelSize.Y + 2),
                     Color.Gray * MathF.Max(0.2f, 1f - dist / 600f));
             }
@@ -727,13 +838,21 @@ public class Game1 : Game
     private void DrawHUD(Vector2 center)
     {
         // Top-left info
-        _spriteBatch.DrawString(_font, $"Credits: {_player.Credits}", new Microsoft.Xna.Framework.Vector2(10, 10), Color.Yellow);
+        DrawSpacedText(_font, $"Credits: {_player.Credits}", new Microsoft.Xna.Framework.Vector2(10, 10), Color.Yellow);
+
+        // AI status
+        string diffStr = _routeManager.Difficulty.ToString();
+        int blocked = _routeManager.CountBlocked;
+        int maxBlocked = _routeManager.MaxBlocked;
+        Color aiColor = blocked > 0 ? new Color(255, 150, 100) : Color.Gray * 0.6f;
+        DrawSpacedText(_font, $"AI [{diffStr}]  Blockades: {blocked}/{maxBlocked}",
+            new Microsoft.Xna.Framework.Vector2(10, 170), aiColor);
 
         if (_galaxy.CurrentSystem != null)
         {
             string info = $"Docked at: {_galaxy.CurrentSystem.Name} [{_galaxy.CurrentSystem.Faction}]";
-            _spriteBatch.DrawString(_font, info, new Microsoft.Xna.Framework.Vector2(10, 30), Color.Cyan);
-            _spriteBatch.DrawString(_font, "Press E / Click  -  Open station services", new Microsoft.Xna.Framework.Vector2(10, 50), Color.Gray * 0.7f);
+            DrawSpacedText(_font, info, new Microsoft.Xna.Framework.Vector2(10, 30), Color.Cyan);
+            DrawSpacedText(_font, "Press E / Click  -  Open station services", new Microsoft.Xna.Framework.Vector2(10, 50), Color.Gray * 0.7f);
         }
         else
         {
@@ -749,9 +868,9 @@ public class Game1 : Game
             if (nearest != null)
             {
                 string dir = GetDirection(_player.Position, new Vector2(nearest.X, nearest.Y));
-                _spriteBatch.DrawString(_font, $"Nearest: {nearest.Name} ({dir})",
+                DrawSpacedText(_font, $"Nearest: {nearest.Name} ({dir})",
                     new Microsoft.Xna.Framework.Vector2(10, 30), Color.Gray * 0.8f);
-                _spriteBatch.DrawString(_font, $"Distance: {(int)nearestDist}",
+                DrawSpacedText(_font, $"Distance: {(int)nearestDist}",
                     new Microsoft.Xna.Framework.Vector2(10, 50), Color.Gray * 0.6f);
             }
         }
@@ -760,7 +879,7 @@ public class Game1 : Game
         float y = 80;
         if (_galaxy.ActiveQuests.Count > 0)
         {
-            _spriteBatch.DrawString(_font, "--- Active Quests ---", new Microsoft.Xna.Framework.Vector2(10, y), Color.Gold);
+            DrawSpacedText(_font, "--- Active Quests ---", new Microsoft.Xna.Framework.Vector2(10, y), Color.Gold);
             y += 20;
             foreach (var q in _galaxy.ActiveQuests)
             {
@@ -776,7 +895,7 @@ public class Game1 : Game
                 else
                     status = q.Description;
 
-                _spriteBatch.DrawString(_font, $"  {q.Name}: {status}", new Microsoft.Xna.Framework.Vector2(10, y), Color.White * 0.9f);
+                DrawSpacedText(_font, $"  {q.Name}: {status}", new Microsoft.Xna.Framework.Vector2(10, y), Color.White * 0.9f);
                 y += 18;
             }
         }
@@ -785,13 +904,13 @@ public class Game1 : Game
         if (_player.OwnedUpgrades.Count > 0)
         {
             y += 10;
-            _spriteBatch.DrawString(_font, "--- Upgrades ---", new Microsoft.Xna.Framework.Vector2(10, y), Color.Lime);
+            DrawSpacedText(_font, "--- Upgrades ---", new Microsoft.Xna.Framework.Vector2(10, y), Color.Lime);
             y += 20;
             foreach (var upId in _player.OwnedUpgrades)
             {
                 var up = _galaxy.AllUpgrades.FirstOrDefault(u => u.Id == upId);
                 if (up != null)
-                    _spriteBatch.DrawString(_font, $"  {up.Name}", new Microsoft.Xna.Framework.Vector2(10, y), Color.Lime * 0.8f);
+                    DrawSpacedText(_font, $"  {up.Name}", new Microsoft.Xna.Framework.Vector2(10, y), Color.Lime * 0.8f);
                 y += 18;
             }
         }
@@ -799,7 +918,7 @@ public class Game1 : Game
         // Controls hint
         string controls = "WASD/Arrows: Fly | Shift: Boost | E: Interact | Q: Accept Quest | ESC: Close";
         var controlsSize = _font.MeasureString(controls);
-        _spriteBatch.DrawString(_font, controls,
+        DrawSpacedText(_font, controls,
             new Microsoft.Xna.Framework.Vector2(ScreenWidth / 2f - controlsSize.X / 2f, ScreenHeight - 25),
             Color.Gray * 0.5f);
 
@@ -881,43 +1000,43 @@ public class Game1 : Game
 
         if (_currentMenu == MenuType.Pause)
         {
-            _spriteBatch.DrawString(_titleFont, "Paused",
+            DrawSpacedText(_titleFont, "Paused",
                 new Microsoft.Xna.Framework.Vector2(textX, textY), Color.Cyan);
             textY += 60;
 
-            string[] options = { "New Game", "Save Game", "Load Game", "Quit" };
+            string[] options = { "New Game", "Save Game", "Load Game", "Controls", "Quit" };
             for (int i = 0; i < options.Length; i++)
             {
                 bool selected = _menuSelection == i;
                 Color c = selected ? Color.Yellow : Color.Gray;
                 string prefix = selected ? "> " : "  ";
-                _spriteBatch.DrawString(_font, prefix + options[i],
+                DrawSpacedText(_font, prefix + options[i],
                     new Microsoft.Xna.Framework.Vector2(textX, textY), c);
                 textY += 30;
             }
 
             textY += 20;
-            _spriteBatch.DrawString(_font, "[Enter] Select  |  [ESC] Resume",
+            DrawSpacedText(_font, "[Enter] Select  |  [ESC] Resume",
                 new Microsoft.Xna.Framework.Vector2(textX, textY), Color.Gray * 0.6f);
         }
         else if (_currentMenu == MenuType.SystemInfo && _menuSystem != null)
         {
             var sys = _menuSystem;
-            _spriteBatch.DrawString(_titleFont, sys.Name, new Microsoft.Xna.Framework.Vector2(textX, textY), ParseColor(sys.Color));
+            DrawSpacedText(_titleFont, sys.Name, new Microsoft.Xna.Framework.Vector2(textX, textY), ParseColor(sys.Color));
             textY += 50;
 
-            _spriteBatch.DrawString(_font, sys.Description, new Microsoft.Xna.Framework.Vector2(textX, textY), Color.White * 0.8f);
+            DrawSpacedText(_font, sys.Description, new Microsoft.Xna.Framework.Vector2(textX, textY), Color.White * 0.8f);
             textY += 40;
 
-            _spriteBatch.DrawString(_font, $"Faction: {sys.Faction ?? "None"}", new Microsoft.Xna.Framework.Vector2(textX, textY), Color.Cyan);
+            DrawSpacedText(_font, $"Faction: {sys.Faction ?? "None"}", new Microsoft.Xna.Framework.Vector2(textX, textY), Color.Cyan);
             textY += 22;
-            _spriteBatch.DrawString(_font, $"Hostility Level: {sys.Hostility}/10", new Microsoft.Xna.Framework.Vector2(textX, textY),
+            DrawSpacedText(_font, $"Hostility Level: {sys.Hostility}/10", new Microsoft.Xna.Framework.Vector2(textX, textY),
                 sys.Hostility > 3 ? Color.OrangeRed : Color.LimeGreen);
             textY += 22;
 
             if (sys.Services.Count > 0)
             {
-                _spriteBatch.DrawString(_font, "Services: " + string.Join(", ", sys.Services), new Microsoft.Xna.Framework.Vector2(textX, textY), Color.Yellow * 0.9f);
+                DrawSpacedText(_font, "Services: " + string.Join(", ", sys.Services), new Microsoft.Xna.Framework.Vector2(textX, textY), Color.Yellow * 0.9f);
                 textY += 30;
             }
 
@@ -936,7 +1055,7 @@ public class Game1 : Game
                 bool selected = _menuSelection == i;
                 Color c = selected ? Color.Yellow : Color.Gray;
                 string prefix = selected ? "> " : "  ";
-                _spriteBatch.DrawString(_font, prefix + items[i], new Microsoft.Xna.Framework.Vector2(textX, textY), c);
+                DrawSpacedText(_font, prefix + items[i], new Microsoft.Xna.Framework.Vector2(textX, textY), c);
                 textY += 24;
             }
         }
@@ -944,17 +1063,17 @@ public class Game1 : Game
         {
             var upgrades = _galaxy.GetAvailableUpgradesForSystem(_menuSystem.Id, _player);
 
-            _spriteBatch.DrawString(_titleFont, $"{_menuSystem.Name}  -  Upgrade Shop",
+            DrawSpacedText(_titleFont, $"{_menuSystem.Name}  -  Upgrade Shop",
                 new Microsoft.Xna.Framework.Vector2(textX, textY), Color.Yellow);
             textY += 50;
 
-            _spriteBatch.DrawString(_font, $"Your Credits: {_player.Credits}",
+            DrawSpacedText(_font, $"Your Credits: {_player.Credits}",
                 new Microsoft.Xna.Framework.Vector2(textX, textY), Color.Gold);
             textY += 30;
 
             if (upgrades.Count == 0)
             {
-                _spriteBatch.DrawString(_font, "No upgrades available.", new Microsoft.Xna.Framework.Vector2(textX, textY), Color.Gray);
+                DrawSpacedText(_font, "No upgrades available.", new Microsoft.Xna.Framework.Vector2(textX, textY), Color.Gray);
             }
             else
             {
@@ -965,17 +1084,17 @@ public class Game1 : Game
                     bool canAfford = _player.Credits >= up.Cost;
                     Color nameColor = selected ? (canAfford ? Color.Lime : Color.Red) : (canAfford ? Color.White : Color.Gray * 0.5f);
                     string prefix = selected ? "> " : "  ";
-                    _spriteBatch.DrawString(_font, $"{prefix}{up.Name}  -  {up.Cost}cr",
+                    DrawSpacedText(_font, $"{prefix}{up.Name}  -  {up.Cost}cr",
                         new Microsoft.Xna.Framework.Vector2(textX, textY), nameColor);
                     textY += 20;
-                    _spriteBatch.DrawString(_font, $"     {up.Description}",
+                    DrawSpacedText(_font, $"     {up.Description}",
                         new Microsoft.Xna.Framework.Vector2(textX, textY), Color.White * 0.5f);
                     textY += 24;
                 }
             }
 
             textY += 20;
-            _spriteBatch.DrawString(_font, "[Enter] Buy  |  [ESC] Back",
+            DrawSpacedText(_font, "[Enter] Buy  |  [ESC] Back",
                 new Microsoft.Xna.Framework.Vector2(textX, textY), Color.Gray * 0.7f);
         }
         else if (_currentMenu == MenuType.QuestBoard && _menuSystem != null)
@@ -984,13 +1103,13 @@ public class Game1 : Game
                 .Where(q => q.GiverSystem == _menuSystem.Id)
                 .ToList();
 
-            _spriteBatch.DrawString(_titleFont, $"{_menuSystem.Name}  -  Quest Board",
+            DrawSpacedText(_titleFont, $"{_menuSystem.Name}  -  Quest Board",
                 new Microsoft.Xna.Framework.Vector2(textX, textY), Color.Gold);
             textY += 50;
 
             if (quests.Count == 0)
             {
-                _spriteBatch.DrawString(_font, "No quests available here.",
+                DrawSpacedText(_font, "No quests available here.",
                     new Microsoft.Xna.Framework.Vector2(textX, textY), Color.Gray);
             }
             else
@@ -1001,13 +1120,13 @@ public class Game1 : Game
                     bool selected = _menuSelection == i;
                     Color c = selected ? Color.Yellow : Color.White;
                     string prefix = selected ? "> " : "  ";
-                    _spriteBatch.DrawString(_font, $"{prefix}{q.Name}",
+                    DrawSpacedText(_font, $"{prefix}{q.Name}",
                         new Microsoft.Xna.Framework.Vector2(textX, textY), c);
                     textY += 20;
-                    _spriteBatch.DrawString(_font, $"     {q.Description}",
+                    DrawSpacedText(_font, $"     {q.Description}",
                         new Microsoft.Xna.Framework.Vector2(textX, textY), Color.White * 0.5f);
                     textY += 18;
-                    _spriteBatch.DrawString(_font, $"     Reward: {q.RewardCredits}cr" +
+                    DrawSpacedText(_font, $"     Reward: {q.RewardCredits}cr" +
                         (q.RewardUpgrade != null ? $" + {q.RewardUpgrade}" : ""),
                         new Microsoft.Xna.Framework.Vector2(textX, textY), Color.Yellow * 0.7f);
                     textY += 24;
@@ -1015,8 +1134,462 @@ public class Game1 : Game
             }
 
             textY += 20;
-            _spriteBatch.DrawString(_font, "[Enter] Accept  |  [ESC] Back",
+            DrawSpacedText(_font, "[Enter] Accept  |  [ESC] Back",
                 new Microsoft.Xna.Framework.Vector2(textX, textY), Color.Gray * 0.7f);
+        }
+        else if (_currentMenu == MenuType.Controls)
+        {
+            // Dim background
+            _spriteBatch.Draw(_pixel, new Microsoft.Xna.Framework.Rectangle(0, 0, ScreenWidth, ScreenHeight),
+                new Color(0, 0, 0, 200));
+
+            string title = "Controls";
+            var titleSz = _titleFont.MeasureString(title);
+            DrawSpacedText(_titleFont, title,
+                new Microsoft.Xna.Framework.Vector2((ScreenWidth - titleSz.X) / 2f, 30), Color.Cyan);
+
+            string[] lines = {
+                "Galaxy View",
+                "  W / Up        Thrust forward",
+                "  S / Down      Thrust backward",
+                "  A / Left      Rotate left",
+                "  D / Right     Rotate right",
+                "  Shift         Boost",
+                "  Enter         Enter system",
+                "  Q             Accept quest",
+                "",
+                "System View",
+                "  W / Up        Thrust forward",
+                "  S / Down      Thrust backward",
+                "  A / Left      Rotate left",
+                "  D / Right     Rotate right",
+                "  Shift         Boost",
+                "  E             Dock / Undock",
+                "",
+                "General",
+                "  ESC           Pause menu / Back",
+                "  T             System map",
+                "  G             Galaxy map",
+                "  I             Inventory",
+            };
+
+            float lx = (ScreenWidth - 500) / 2f;
+            float ly = 80;
+            foreach (var line in lines)
+            {
+                bool isHeader = line.Length > 0 && line[0] != ' ';
+                Color c = isHeader ? new Color(255, 200, 100) : Color.Gray * 0.9f;
+                DrawSpacedText(_font, line,
+                    new Microsoft.Xna.Framework.Vector2(lx, ly), c);
+                ly += isHeader ? 24 : 20;
+            }
+
+            DrawSpacedText(_font, "[ESC] Back",
+                new Microsoft.Xna.Framework.Vector2(ScreenWidth - 120, ScreenHeight - 30),
+                Color.Gray * 0.6f);
+        }
+    }
+
+    private void DrawSystemMapOverlay()
+    {
+        // Dim background
+        _spriteBatch.Draw(_pixel, new Microsoft.Xna.Framework.Rectangle(0, 0, ScreenWidth, ScreenHeight),
+            new Color(0, 0, 0, 200));
+
+        var sys = _galaxy.CurrentSystem;
+        if (sys == null)
+        {
+            var msg = "No system selected";
+            var sz = _titleFont.MeasureString(msg);
+            DrawSpacedText(_titleFont, msg,
+                new Microsoft.Xna.Framework.Vector2((ScreenWidth - sz.X) / 2f, ScreenHeight / 2f - sz.Y / 2f),
+                Color.Gray);
+            return;
+        }
+
+        // Title
+        string title = $"System: {sys.Name}";
+        var titleSz = _titleFont.MeasureString(title);
+        DrawSpacedText(_titleFont, title,
+            new Microsoft.Xna.Framework.Vector2((ScreenWidth - titleSz.X) / 2f, 20), Color.Cyan);
+
+        // Layout
+        float cx = ScreenWidth / 2f;
+        float cy = ScreenHeight / 2f + 20;
+        float margin = MathF.Min(cx, cy) - 30;
+        float systemRadius = 0f;
+        foreach (var p in sys.Planets)
+            if (p.OrbitRadius > systemRadius) systemRadius = p.OrbitRadius;
+        if (sys.Station != null && sys.Station.OrbitRadius > systemRadius)
+            systemRadius = sys.Station.OrbitRadius;
+        systemRadius = MathF.Max(systemRadius, 1f) * 1.1f;
+        float scale = margin / systemRadius;
+
+        // Orbit rings
+        foreach (var p in sys.Planets)
+            DrawCircle(cx, cy, p.OrbitRadius * scale, new Color(60, 60, 80, 100));
+        if (sys.Station != null)
+            DrawCircle(cx, cy, sys.Station.OrbitRadius * scale, new Color(60, 80, 100, 100));
+
+        // Star
+        float starR = MathF.Max(sys.StarRadius * scale, 4f);
+        FillCircle(cx, cy, starR, ParseColor(sys.Color) * 0.5f);
+        DrawCircle(cx, cy, starR, ParseColor(sys.Color));
+
+        // Planets
+        float angle = 0;
+        foreach (var p in sys.Planets)
+        {
+            float px = cx + MathF.Cos(angle) * p.OrbitRadius * scale;
+            float py = cy + MathF.Sin(angle) * p.OrbitRadius * scale;
+            float pr = MathF.Max(p.Radius * scale, 2f);
+            FillCircle(px, py, pr, ParseColor(p.Color));
+
+            var lblSz = _font.MeasureString(p.Name);
+            DrawSpacedText(_font, p.Name,
+                new Microsoft.Xna.Framework.Vector2(px - lblSz.X / 2f, py + pr + 4f),
+                Color.White * 0.8f);
+            angle += 1.5f;
+        }
+
+        // Station
+        if (sys.Station != null)
+        {
+            float stAngle = sys.Station.Angle;
+            float stx = cx + MathF.Cos(stAngle) * sys.Station.OrbitRadius * scale;
+            float sty = cy + MathF.Sin(stAngle) * sys.Station.OrbitRadius * scale;
+            float stR = MathF.Max(sys.Station.Radius * scale, 2f);
+            FillCircle(stx, sty, stR, Color.LightBlue);
+
+            var stLbl = sys.Station.Name;
+            var stSz = _font.MeasureString(stLbl);
+            DrawSpacedText(_font, stLbl,
+                new Microsoft.Xna.Framework.Vector2(stx - stSz.X / 2f, sty + stR + 4f),
+                Color.Cyan);
+        }
+
+        // Player position
+        float plx = cx + _player.Position.X * scale;
+        float ply = cy + _player.Position.Y * scale;
+        FillCircle(plx, ply, 4f, Color.White);
+        DrawCircle(plx, ply, 6f, Color.White);
+
+        // Quest targets in this system
+        float qy = ScreenHeight - 60;
+        foreach (var quest in _galaxy.ActiveQuests)
+        {
+            if (quest.ObjectiveType == "travel" && quest.TargetSystem == sys.Id)
+            {
+                DrawSpacedText(_font, $"Quest: {quest.Name}",
+                    new Microsoft.Xna.Framework.Vector2(30, qy), Color.Gold);
+                qy += 20;
+            }
+        }
+
+        // Close hint
+        string hint = "[T] or [ESC] Close";
+        var hintSz = _font.MeasureString(hint);
+        DrawSpacedText(_font, hint,
+            new Microsoft.Xna.Framework.Vector2(ScreenWidth - hintSz.X - 20, ScreenHeight - 30),
+            Color.Gray * 0.7f);
+    }
+
+    private void DrawGalaxyMapOverlay()
+    {
+        // Dim background
+        _spriteBatch.Draw(_pixel, new Microsoft.Xna.Framework.Rectangle(0, 0, ScreenWidth, ScreenHeight),
+            new Color(0, 0, 0, 200));
+
+        string title = "Galaxy Map";
+        var titleSz = _titleFont.MeasureString(title);
+        DrawSpacedText(_titleFont, title,
+            new Microsoft.Xna.Framework.Vector2((ScreenWidth - titleSz.X) / 2f, 20), Color.Cyan);
+
+        // Find bounds
+        float minX = float.MaxValue, maxX = float.MinValue;
+        float minY = float.MaxValue, maxY = float.MinValue;
+        foreach (var sys in _galaxy.Systems)
+        {
+            if (sys.X < minX) minX = sys.X;
+            if (sys.X > maxX) maxX = sys.X;
+            if (sys.Y < minY) minY = sys.Y;
+            if (sys.Y > maxY) maxY = sys.Y;
+        }
+
+        float rangeX = maxX - minX + 400;
+        float rangeY = maxY - minY + 400;
+        float mapAreaW = ScreenWidth - 80;
+        float mapAreaH = ScreenHeight - 120;
+        float scale = MathF.Min(mapAreaW / rangeX, mapAreaH / rangeY) * 0.9f;
+
+        float cx = (minX + maxX) / 2f;
+        float cy2 = (minY + maxY) / 2f;
+        float originX = ScreenWidth / 2f;
+        float originY = ScreenHeight / 2f + 10;
+
+        // Connection lines
+        var drawn = new HashSet<(string, string)>();
+        foreach (var sys in _galaxy.Systems)
+        {
+            foreach (var conn in sys.Connections)
+            {
+                var key = string.Compare(sys.Id, conn, StringComparison.Ordinal) < 0
+                    ? (sys.Id, conn) : (conn, sys.Id);
+                if (drawn.Contains(key)) continue;
+                drawn.Add(key);
+
+                var other = _galaxy.FindSystemById(conn);
+                if (other == null) continue;
+
+                float x1 = originX + (sys.X - cx) * scale;
+                float y1 = originY + (sys.Y - cy2) * scale;
+                float x2 = originX + (other.X - cx) * scale;
+                float y2 = originY + (other.Y - cy2) * scale;
+
+                bool blocked = _routeManager.IsBlocked(sys.Id, conn);
+                if (blocked)
+                {
+                    float pulse = MathF.Sin((float)_gameTime.TotalGameTime.TotalSeconds * 2f) * 0.2f + 0.6f;
+                    DrawLine(x1, y1, x2, y2, new Color(200, 30, 30) * pulse);
+                }
+                else
+                {
+                    DrawLine(x1, y1, x2, y2, new Color(60, 80, 120, 80));
+                }
+            }
+        }
+
+        // Systems
+        foreach (var sys in _galaxy.Systems)
+        {
+            float sx = originX + (sys.X - cx) * scale;
+            float sy = originY + (sys.Y - cy2) * scale;
+
+            Color color = ParseColor(sys.Color);
+            FillCircle(sx, sy, MathF.Max(sys.Radius * scale * 0.6f, 3f), color * 0.8f);
+            DrawCircle(sx, sy, MathF.Max(sys.Radius * scale * 0.6f, 3f), color);
+
+            bool isCurrent = _player.CurrentSystemId == sys.Id;
+            bool isQuest = _galaxy.ActiveQuests.Any(q => q.TargetSystem == sys.Id);
+
+            if (isCurrent)
+                DrawCircle(sx, sy, 8f, Color.Yellow);
+
+            if (isQuest)
+            {
+                float pulse = MathF.Sin((float)_gameTime.TotalGameTime.TotalSeconds * 2f) * 0.3f + 0.7f;
+                DrawCircle(sx, sy, 12f, Color.Gold * pulse);
+            }
+
+            // Name label
+            var lblSz = _font.MeasureString(sys.Name);
+            float lx = sx - lblSz.X / 2f;
+            float ly = sy + MathF.Max(sys.Radius * scale * 0.6f, 3f) + 4f;
+            _spriteBatch.Draw(_pixel,
+                new Microsoft.Xna.Framework.Rectangle((int)lx - 3, (int)ly - 1,
+                    (int)lblSz.X + 6, (int)lblSz.Y + 3),
+                new Color(0, 0, 0, 140));
+            DrawSpacedText(_font, sys.Name,
+                new Microsoft.Xna.Framework.Vector2(lx, ly),
+                isCurrent ? Color.White : Color.White * 0.8f);
+        }
+
+        // Player position
+        float plx = originX + (_player.Position.X - cx) * scale;
+        float ply2 = originY + (_player.Position.Y - cy2) * scale;
+        FillCircle(plx, ply2, 4f, Color.White);
+        DrawCircle(plx, ply2, 7f, Color.White);
+
+        // Legend
+        float legX = 20;
+        float legY = ScreenHeight - 80;
+        DrawSpacedText(_font, "Blockaded route  ---", new Microsoft.Xna.Framework.Vector2(legX, legY), new Color(200, 30, 30));
+        DrawSpacedText(_font, "Quest target  O", new Microsoft.Xna.Framework.Vector2(legX, legY + 18), Color.Gold);
+        DrawSpacedText(_font, "Current system  O", new Microsoft.Xna.Framework.Vector2(legX, legY + 36), Color.Yellow);
+
+        // AI status on map
+        string aiInfo = $"AI [{_routeManager.Difficulty}]  Blockades: {_routeManager.CountBlocked}/{_routeManager.MaxBlocked}";
+        var aiSz = _font.MeasureString(aiInfo);
+        DrawSpacedText(_font, aiInfo,
+            new Microsoft.Xna.Framework.Vector2(ScreenWidth - aiSz.X - 20, 50),
+            new Color(255, 150, 100));
+
+        // Close hint
+        string hint = "[G] or [ESC] Close";
+        var hintSz = _font.MeasureString(hint);
+        DrawSpacedText(_font, hint,
+            new Microsoft.Xna.Framework.Vector2(ScreenWidth - hintSz.X - 20, ScreenHeight - 30),
+            Color.Gray * 0.7f);
+    }
+
+    private void DrawInventoryOverlay()
+    {
+        _spriteBatch.Draw(_pixel, new Microsoft.Xna.Framework.Rectangle(0, 0, ScreenWidth, ScreenHeight),
+            new Color(0, 0, 0, 180));
+
+        int panelW = 800;
+        int panelH = 600;
+        int px = (ScreenWidth - panelW) / 2;
+        int py = (ScreenHeight - panelH) / 2;
+
+        _spriteBatch.Draw(_pixel, new Microsoft.Xna.Framework.Rectangle(px, py, panelW, panelH),
+            new Color(15, 15, 35, 235));
+        DrawRect(px, py, panelW, panelH, new Color(60, 60, 100));
+
+        int textX = px + 20;
+        int textY = py + 20;
+
+        // Title
+        DrawSpacedText(_titleFont, "Inventory",
+            new Microsoft.Xna.Framework.Vector2(textX, textY), Color.Cyan);
+        textY += 50;
+
+        // Cargo usage
+        int cap = _player.CargoCapacity;
+        if (_player.OwnedUpgrades.Contains("cargo_v1")) cap = (int)(cap * 2.0f);
+        int used = _player.UsedCargo;
+        Color capColor = used > cap ? Color.Red : Color.Gray;
+        DrawSpacedText(_font, $"Cargo: {used}/{cap}",
+            new Microsoft.Xna.Framework.Vector2(px + panelW - 200, py + 25), capColor);
+        if (used > cap)
+        {
+            DrawSpacedText(_font, "OVERWEIGHT!",
+                new Microsoft.Xna.Framework.Vector2(px + panelW - 200, py + 45), Color.Red);
+        }
+
+        // Tabs
+        string[] tabs = { "Quest Items", "Resources", "Equipment" };
+        float tabX = textX;
+        for (int i = 0; i < tabs.Length; i++)
+        {
+            Color tc = i == _inventoryTab ? Color.Yellow : Color.Gray;
+            string tPrefix = i == _inventoryTab ? "[ " : "  ";
+            string tSuffix = i == _inventoryTab ? " ]" : "  ";
+            var sz = _font.MeasureString(tabs[i]);
+            DrawSpacedText(_font, tPrefix + tabs[i] + tSuffix,
+                new Microsoft.Xna.Framework.Vector2(tabX, textY), tc);
+            tabX += sz.X + 30;
+        }
+        textY += 40;
+
+        // Content
+        if (_inventoryTab == 0)
+            DrawInventoryQuestItems(new Microsoft.Xna.Framework.Vector2(textX, textY), px + panelW - 20);
+        else if (_inventoryTab == 1)
+            DrawInventoryResources(new Microsoft.Xna.Framework.Vector2(textX, textY), px + panelW - 20);
+        else if (_inventoryTab == 2)
+            DrawInventoryEquipment(new Microsoft.Xna.Framework.Vector2(textX, textY), px + panelW - 20);
+    }
+
+    private void DrawInventoryQuestItems(Microsoft.Xna.Framework.Vector2 pos, float rightX)
+    {
+        float textY = pos.Y;
+        if (_player.QuestItems.Count == 0)
+        {
+            DrawSpacedText(_font, "No quest items.",
+                new Microsoft.Xna.Framework.Vector2(pos.X, textY), Color.Gray);
+            return;
+        }
+
+        for (int i = 0; i < _player.QuestItems.Count; i++)
+        {
+            var entry = _player.QuestItems[i];
+            string label = $"{entry.Id.Replace('_', ' ')} x{entry.Quantity}";
+            DrawSpacedText(_font, label,
+                new Microsoft.Xna.Framework.Vector2(pos.X, textY), Color.Wheat);
+            textY += 24;
+        }
+    }
+
+    private void DrawInventoryResources(Microsoft.Xna.Framework.Vector2 pos, float rightX)
+    {
+        float textY = pos.Y;
+        if (_player.Resources.Count == 0)
+        {
+            DrawSpacedText(_font, "No resources in cargo.",
+                new Microsoft.Xna.Framework.Vector2(pos.X, textY), Color.Gray);
+            return;
+        }
+
+        // Header
+        DrawSpacedText(_font, "Item                          Qty    Value",
+            new Microsoft.Xna.Framework.Vector2(pos.X, textY), Color.Gray * 0.6f);
+        textY += 24;
+
+        for (int i = 0; i < _player.Resources.Count; i++)
+        {
+            var entry = _player.Resources[i];
+            var def = _galaxy.FindResource(entry.Id);
+            string name = def?.Name ?? entry.Id;
+            int totalValue = (def?.BasePrice ?? 0) * entry.Quantity;
+            string line = $"{name,-30} {entry.Quantity,-5} {totalValue}cr";
+            DrawSpacedText(_font, line,
+                new Microsoft.Xna.Framework.Vector2(pos.X, textY), Color.White * 0.9f);
+            textY += 22;
+        }
+    }
+
+    private void DrawInventoryEquipment(Microsoft.Xna.Framework.Vector2 pos, float rightX)
+    {
+        float textY = pos.Y;
+
+        string[] slotLabels = { "Weapon 1", "Weapon 2", "Shield", "Engine", "Utility 1", "Utility 2" };
+        string[] slotKeys = { "weapon1", "weapon2", "shield", "engine", "utility1", "utility2" };
+
+        for (int i = 0; i < slotKeys.Length; i++)
+        {
+            string slotLabel = slotLabels[i];
+            bool filled = _player.Equipment.ContainsKey(slotKeys[i]);
+            string equipName = "";
+            if (filled)
+            {
+                var def = _galaxy.FindEquipment(_player.Equipment[slotKeys[i]]);
+                equipName = def?.Name ?? _player.Equipment[slotKeys[i]];
+            }
+
+            DrawSpacedText(_font, $"{slotLabel}:",
+                new Microsoft.Xna.Framework.Vector2(pos.X, textY), Color.Gray);
+            string itemLabel = filled ? equipName : "--- empty ---";
+            Color itemColor = filled ? Color.Lime : Color.Gray * 0.5f;
+            DrawSpacedText(_font, itemLabel,
+                new Microsoft.Xna.Framework.Vector2(pos.X + 120, textY), itemColor);
+            textY += 26;
+        }
+
+        textY += 10;
+
+        // Hint
+        DrawSpacedText(_font, "[Q/E] Switch tab  |  [I] or [ESC] Close",
+            new Microsoft.Xna.Framework.Vector2(pos.X, textY), Color.Gray * 0.5f);
+    }
+
+    private void DrawSpacedText(SpriteFont font, string text, Microsoft.Xna.Framework.Vector2 position, Color color)
+    {
+        if (text.Length == 0) return;
+
+        string[] parts = text.Split(' ');
+        if (parts.Length <= 1)
+        {
+            _spriteBatch.DrawString(font, text, position, color);
+            return;
+        }
+
+        float spaceW = font.MeasureString(" ").X;
+        if (spaceW < 1f) spaceW = font.MeasureString("M").X;
+
+        float x = position.X;
+        float y = position.Y;
+        for (int i = 0; i < parts.Length; i++)
+        {
+            if (parts[i].Length > 0)
+            {
+                _spriteBatch.DrawString(font, parts[i], new Microsoft.Xna.Framework.Vector2(x, y), color);
+                x += font.MeasureString(parts[i]).X + spaceW;
+            }
+            else
+            {
+                x += spaceW;
+            }
         }
     }
 
@@ -1034,7 +1607,7 @@ public class Game1 : Game
                 (int)size.X + 20, (int)size.Y + 12),
             new Color(0, 0, 0, (int)(160 * alpha)));
 
-        _spriteBatch.DrawString(_titleFont, msg,
+        DrawSpacedText(_titleFont, msg,
             new Microsoft.Xna.Framework.Vector2(x, y), Color.White * alpha);
     }
 

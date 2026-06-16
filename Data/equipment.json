@@ -1,0 +1,104 @@
+{
+  "equipment": [
+    {
+      "id": "laser_cannon_mk1",
+      "name": "Laser Cannon Mk I",
+      "description": "Standard laser cannon with reliable damage output",
+      "slot": "weapon",
+      "effectType": "weapon_damage",
+      "effectValue": 1.0,
+      "cost": 500,
+      "location": "vega"
+    },
+    {
+      "id": "laser_cannon_mk2",
+      "name": "Laser Cannon Mk II",
+      "description": "Enhanced laser cannon with higher fire rate",
+      "slot": "weapon",
+      "effectType": "weapon_damage",
+      "effectValue": 1.6,
+      "cost": 1200,
+      "location": "draco"
+    },
+    {
+      "id": "missile_launcher",
+      "name": "Missile Launcher",
+      "description": "Fires guided projectiles at enemy targets",
+      "slot": "weapon",
+      "effectType": "weapon_missile",
+      "effectValue": 1.0,
+      "cost": 800,
+      "location": "cygnus"
+    },
+    {
+      "id": "shield_mk1",
+      "name": "Shield Generator Mk I",
+      "description": "Basic energy shield that absorbs incoming fire",
+      "slot": "shield",
+      "effectType": "shield_strength",
+      "effectValue": 50,
+      "cost": 400,
+      "location": "proxima"
+    },
+    {
+      "id": "shield_mk2",
+      "name": "Shield Generator Mk II",
+      "description": "Reinforced shield array with faster recharge",
+      "slot": "shield",
+      "effectType": "shield_strength",
+      "effectValue": 120,
+      "cost": 1200,
+      "location": "tribune"
+    },
+    {
+      "id": "afterburner",
+      "name": "Afterburner",
+      "description": "Temporary speed boost on demand",
+      "slot": "engine",
+      "effectType": "engine_boost",
+      "effectValue": 0.3,
+      "cost": 600,
+      "location": "alpha"
+    },
+    {
+      "id": "warp_drive",
+      "name": "Warp Drive",
+      "description": "Increased base FTL speed between systems",
+      "slot": "engine",
+      "effectType": "engine_warp",
+      "effectValue": 1.5,
+      "cost": 2000,
+      "location": "barnard"
+    },
+    {
+      "id": "cargo_scanner",
+      "name": "Cargo Scanner",
+      "description": "Detects resource composition of nearby objects",
+      "slot": "utility",
+      "effectType": "utility_scanner",
+      "effectValue": 1.0,
+      "cost": 300,
+      "location": "proxima"
+    },
+    {
+      "id": "repair_drone",
+      "name": "Repair Drone",
+      "description": "Auto-repairs hull damage over time",
+      "slot": "utility",
+      "effectType": "utility_repair",
+      "effectValue": 1.0,
+      "cost": 750,
+      "location": "vega"
+    },
+    {
+      "id": "targeting_computer",
+      "name": "Targeting Computer",
+      "description": "Improves weapon accuracy and tracking",
+      "slot": "utility",
+      "effectType": "utility_targeting",
+      "effectValue": 1.0,
+      "cost": 500,
+      "location": "draco"
+    }
+  ]
+}

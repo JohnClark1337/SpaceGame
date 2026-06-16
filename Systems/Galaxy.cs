@@ -8,6 +8,8 @@ public class Galaxy
     public List<StarSystemData> Systems { get; private set; } = new();
     public List<QuestData> AllQuests { get; private set; } = new();
     public List<UpgradeData> AllUpgrades { get; private set; } = new();
+    public List<ResourceDef> AllResources { get; private set; } = new();
+    public List<EquipmentDef> AllEquipment { get; private set; } = new();
     public List<QuestData> ActiveQuests { get; private set; } = new();
     public List<QuestData> AvailableQuests { get; private set; } = new();
 
@@ -46,6 +48,14 @@ public class Galaxy
         string upgradesJson = LoadJson("upgrades.json");
         if (!string.IsNullOrEmpty(upgradesJson))
             AllUpgrades = JsonSerializer.Deserialize<UpgradesData>(upgradesJson, JsonOpts)?.Upgrades ?? new();
+
+        string resourcesJson = LoadJson("resources.json");
+        if (!string.IsNullOrEmpty(resourcesJson))
+            AllResources = JsonSerializer.Deserialize<ResourcesData>(resourcesJson, JsonOpts)?.Resources ?? new();
+
+        string equipmentJson = LoadJson("equipment.json");
+        if (!string.IsNullOrEmpty(equipmentJson))
+            AllEquipment = JsonSerializer.Deserialize<EquipmentData>(equipmentJson, JsonOpts)?.Equipment ?? new();
 
         AvailableQuests = new List<QuestData>(AllQuests);
     }
@@ -108,5 +118,17 @@ public class Galaxy
         AllUpgrades
             .Where(u => u.Location == systemId)
             .Where(u => !player.OwnedUpgrades.Contains(u.Id))
+            .ToList();
+
+    public ResourceDef? FindResource(string id) =>
+        AllResources.FirstOrDefault(r => r.Id == id);
+
+    public EquipmentDef? FindEquipment(string id) =>
+        AllEquipment.FirstOrDefault(e => e.Id == id);
+
+    public List<EquipmentDef> GetAvailableEquipmentForSystem(string systemId, Player player) =>
+        AllEquipment
+            .Where(e => e.Location == systemId)
+            .Where(e => !player.Equipment.ContainsValue(e.Id))
             .ToList();
 }

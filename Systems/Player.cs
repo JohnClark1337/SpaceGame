@@ -16,6 +16,11 @@ public class Player
     public List<string> CompletedQuests { get; set; } = new();
     public string? CurrentSystemId { get; set; }
 
+    public List<InventoryEntry> Resources { get; set; } = new();
+    public List<InventoryEntry> QuestItems { get; set; } = new();
+    public Dictionary<string, string> Equipment { get; set; } = new(); // slot -> equipmentId
+    public int CargoCapacity { get; set; } = 100;
+
     public float BaseMaxSpeed { get; set; } = 300f;
     public float BaseThrust { get; set; } = 500f;
     public float BaseRotationSpeed { get; set; } = 3f;
@@ -44,7 +49,18 @@ public class Player
         }
     }
 
-    public bool HasShield => OwnedUpgrades.Contains("shield_v1");
+    public bool HasShield => OwnedUpgrades.Contains("shield_v1") || Equipment.ContainsKey("shield");
+
+    public int UsedCargo
+    {
+        get
+        {
+            int total = 0;
+            foreach (var entry in Resources)
+                total += entry.Quantity;
+            return total;
+        }
+    }
 
     public Player(Vector2 startPosition)
     {
