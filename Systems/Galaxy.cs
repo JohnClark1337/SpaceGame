@@ -123,6 +123,7 @@ public class Galaxy
         var toComplete = new List<QuestData>();
         foreach (var quest in ActiveQuests)
         {
+            if (quest.ObjectiveType == "travel") continue;
             if (IsQuestObjectiveMet(quest, player))
                 toComplete.Add(quest);
         }

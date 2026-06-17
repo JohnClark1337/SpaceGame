@@ -459,7 +459,8 @@ public class SystemScene
 
             // Lifepod: activate when quest is active, position if not yet placed
             bool rescueQuestActive = _game.Galaxy.ActiveQuests.Any(q => q.Id == "rescue_princess");
-            if (rescueQuestActive && !_lifepodActive)
+            bool alreadyHasPod = _player.QuestItems.Any(qi => qi.Id == "princess_lifepod");
+            if (rescueQuestActive && !_lifepodActive && !alreadyHasPod)
             {
                 PositionLifepod();
                 _lifepodActive = true;
@@ -710,8 +711,12 @@ public class SystemScene
                 var activeHere = _game.Galaxy.ActiveQuests
                     .Where(q => q.GiverSystem == _system.Id)
                     .ToList();
+                var activeTarget = _game.Galaxy.ActiveQuests
+                    .Where(q => q.ObjectiveType == "travel" && q.TargetSystem == _system.Id)
+                    .ToList();
                 var completable = activeHere
                     .Where(q => _game.Galaxy.IsQuestObjectiveMet(q, _player))
+                    .Concat(activeTarget)
                     .ToList();
                 int selectableCount = available.Count + completable.Count;
                 if (selectableCount > 0)
@@ -1509,8 +1514,12 @@ public class SystemScene
         var activeHere = _game.Galaxy.ActiveQuests
             .Where(q => q.GiverSystem == _system.Id)
             .ToList();
+        var activeTarget = _game.Galaxy.ActiveQuests
+            .Where(q => q.ObjectiveType == "travel" && q.TargetSystem == _system.Id)
+            .ToList();
         var completable = activeHere
             .Where(q => _game.Galaxy.IsQuestObjectiveMet(q, _player))
+            .Concat(activeTarget)
             .ToList();
         var inProgress = activeHere
             .Where(q => !_game.Galaxy.IsQuestObjectiveMet(q, _player))
