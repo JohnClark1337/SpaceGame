@@ -12,6 +12,7 @@ public class Galaxy
     public List<EquipmentDef> AllEquipment { get; private set; } = new();
     public List<QuestData> ActiveQuests { get; private set; } = new();
     public List<QuestData> AvailableQuests { get; private set; } = new();
+    public Economy Economy { get; private set; } = null!;
 
     public StarSystemData? CurrentSystem { get; set; }
     public StarSystemData? TargetSystem { get; set; }
@@ -58,6 +59,8 @@ public class Galaxy
             AllEquipment = JsonSerializer.Deserialize<EquipmentData>(equipmentJson, JsonOpts)?.Equipment ?? new();
 
         AvailableQuests = new List<QuestData>(AllQuests);
+        Economy = new Economy(this);
+        Economy.Initialize();
     }
 
     public StarSystemData? FindSystemById(string id) =>
@@ -93,33 +96,38 @@ public class Galaxy
         }
     }
 
+    public bool IsQuestObjectiveMet(QuestData quest, Player player)
+    {
+        if (quest.ObjectiveType == "travel" && quest.TargetSystem == player.CurrentSystemId)
+            return true;
+        if (quest.ObjectiveType == "collect" && quest.TargetItem != null &&
+            quest.TargetSystem == player.CurrentSystemId &&
+            player.QuestItems.Any(qi => qi.Id == quest.TargetItem))
+            return true;
+        return false;
+    }
+
+    public void CompleteQuest(QuestData quest, Player player)
+    {
+        player.Credits += quest.RewardCredits;
+        if (quest.RewardUpgrade != null && !player.OwnedUpgrades.Contains(quest.RewardUpgrade))
+            player.OwnedUpgrades.Add(quest.RewardUpgrade);
+        if (quest.TargetItem != null)
+            player.QuestItems.RemoveAll(qi => qi.Id == quest.TargetItem);
+        player.CompletedQuests.Add(quest.Id);
+        ActiveQuests.Remove(quest);
+    }
+
     public void CheckQuestProgress(Player player)
     {
-        var completed = new List<QuestData>();
+        var toComplete = new List<QuestData>();
         foreach (var quest in ActiveQuests)
         {
-            if (quest.ObjectiveType == "travel" && quest.TargetSystem == player.CurrentSystemId)
-            {
-                completed.Add(quest);
-            }
-            else if (quest.ObjectiveType == "collect" && quest.TargetItem != null &&
-                     quest.TargetSystem == player.CurrentSystemId &&
-                     player.QuestItems.Any(qi => qi.Id == quest.TargetItem))
-            {
-                completed.Add(quest);
-            }
+            if (IsQuestObjectiveMet(quest, player))
+                toComplete.Add(quest);
         }
-
-        foreach (var quest in completed)
-        {
-            player.Credits += quest.RewardCredits;
-            if (quest.RewardUpgrade != null && !player.OwnedUpgrades.Contains(quest.RewardUpgrade))
-                player.OwnedUpgrades.Add(quest.RewardUpgrade);
-            if (quest.TargetItem != null)
-                player.QuestItems.RemoveAll(qi => qi.Id == quest.TargetItem);
-            player.CompletedQuests.Add(quest.Id);
-            ActiveQuests.Remove(quest);
-        }
+        foreach (var quest in toComplete)
+            CompleteQuest(quest, player);
     }
 
     public List<UpgradeData> GetAvailableUpgradesForSystem(string systemId, Player player) =>

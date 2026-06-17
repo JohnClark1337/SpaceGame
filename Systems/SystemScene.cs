@@ -31,6 +31,9 @@ public class SystemScene
     private const float ZOOM = 3.75f;
     private float _systemRadius;
     private bool _docked;
+    private int _dockedTab;
+    private int _dockedQuestSelection;
+    private int _dockedMarketSelection;
     private bool _nearEdge;
     private bool _nearPlanet;
     private bool _initialized;
@@ -63,6 +66,8 @@ public class SystemScene
     private Particle[] _particles = new Particle[80];
     private bool _particlesInitialized;
     private Vector2 _waypointPosition;
+    private int _waypointIndex;
+    private List<(Vector2 pos, string name)> _waypointTargets = new();
 
     private struct Bullet
     {
@@ -117,6 +122,8 @@ public class SystemScene
         _game = game;
         _initialized = false;
         _docked = false;
+        _trainingPaused = false;
+        _showEnemyList = false;
     }
 
     private void Initialize()
@@ -201,8 +208,12 @@ public class SystemScene
         _player.Velocity = Vector2.Zero;
         _player.Angle = spawnAngle + MathF.PI;
 
-        _waypointPosition = _system.Station != null
-            ? new Vector2(_station.X, _station.Y)
+        _waypointTargets.Clear();
+        _waypointIndex = 0;
+        if (_system.Station != null)
+            _waypointTargets.Add((new Vector2(_station.X, _station.Y), _station.Name));
+        _waypointPosition = _waypointTargets.Count > 0
+            ? _waypointTargets[0].pos
             : Vector2.Zero;
 
         int sw = _game.ViewWidth;
@@ -284,10 +295,39 @@ public class SystemScene
                 _station.CurrentAngle += _station.OrbitSpeed * dt;
                 _station.X = MathF.Cos(_station.CurrentAngle) * _station.OrbitRadius;
                 _station.Y = MathF.Sin(_station.CurrentAngle) * _station.OrbitRadius;
-                _waypointPosition = new Vector2(_station.X, _station.Y);
             }
 
-            // Training mode input (F1, ESC pause) — intercepts normal update
+            // Rebuild waypoint targets
+            _waypointTargets.Clear();
+            if (_system.Station != null)
+                _waypointTargets.Add((new Vector2(_station.X, _station.Y), _station.Name));
+            if (_game != null)
+            {
+                foreach (var q in _game.Galaxy.ActiveQuests)
+                {
+                    if (q.TargetSystem != _system.Id) continue;
+                    if (q.ObjectiveType == "collect" && _lifepodActive)
+                        _waypointTargets.Add((new Vector2(_lifepod.X, _lifepod.Y), q.Name));
+                    else if (q.ObjectiveType == "travel")
+                        _waypointTargets.Add((Vector2.Zero, q.Name));
+                }
+            }
+            if (_waypointIndex >= _waypointTargets.Count)
+                _waypointIndex = 0;
+            _waypointPosition = _waypointTargets.Count > 0
+                ? _waypointTargets[_waypointIndex].pos
+                : (_system.Station != null ? new Vector2(_station.X, _station.Y) : Vector2.Zero);
+
+            // Tab to cycle waypoint
+            if (keyboard.IsKeyDown(Keys.Tab) && _prevKeyboard.IsKeyUp(Keys.Tab))
+            {
+                _waypointIndex = (_waypointIndex + 1) % Math.Max(1, _waypointTargets.Count);
+                _waypointPosition = _waypointTargets.Count > 0
+                    ? _waypointTargets[_waypointIndex].pos
+                    : _waypointPosition;
+            }
+
+            // Training mode input (F1, ESC pause) - intercepts normal update
             if (TrainingMode)
             {
                 bool esc = keyboard.IsKeyDown(Keys.Escape) && _prevKeyboard.IsKeyUp(Keys.Escape);
@@ -429,7 +469,6 @@ public class SystemScene
                 {
                     _player.QuestItems.Add(new InventoryEntry { Id = "princess_lifepod", Quantity = 1 });
                     _lifepodActive = false;
-                    _game.Galaxy.CheckQuestProgress(_player);
                 }
             }
 
@@ -512,7 +551,7 @@ public class SystemScene
                 for (int j = _enemies.Count - 1; j >= 0; j--)
                 {
                     var e = _enemies[j];
-                    if (Vector2.Distance(b.Position, e.Position) < 22f * ZOOM)
+                    if (Vector2.Distance(b.Position, e.Position) < 16f)
                     {
                         e.Health -= 1f;
                         if (e.Health <= 0f)
@@ -540,14 +579,14 @@ public class SystemScene
             {
                 var b = _bullets[i];
                 if (b.IsPlayerBullet) continue;
-                if (Vector2.Distance(b.Position, _player.Position) < 22f * ZOOM)
+                if (Vector2.Distance(b.Position, _player.Position) < 22f)
                 {
                     _player.Health -= 2;
                     _bullets.RemoveAt(i);
                 }
             }
 
-            // Enemy-player collision (ramming) — disabled
+            // Enemy-player collision (ramming) - disabled
             //for (int i = 0; i < _enemies.Count; i++)
             //{
             //    var e = _enemies[i];
@@ -587,9 +626,100 @@ public class SystemScene
         }
         else
         {
-            if (JustPressed(keyboard, Keys.Escape))
+            bool escDocked = keyboard.IsKeyDown(Keys.Escape) && _prevKeyboard.IsKeyUp(Keys.Escape);
+            bool leftDocked = (keyboard.IsKeyDown(Keys.Left) && _prevKeyboard.IsKeyUp(Keys.Left)) ||
+                              (keyboard.IsKeyDown(Keys.A) && _prevKeyboard.IsKeyUp(Keys.A));
+            bool rightDocked = (keyboard.IsKeyDown(Keys.Right) && _prevKeyboard.IsKeyUp(Keys.Right)) ||
+                               (keyboard.IsKeyDown(Keys.D) && _prevKeyboard.IsKeyUp(Keys.D));
+            bool downDocked = (keyboard.IsKeyDown(Keys.Down) && _prevKeyboard.IsKeyUp(Keys.Down)) ||
+                              (keyboard.IsKeyDown(Keys.S) && _prevKeyboard.IsKeyUp(Keys.S));
+            bool upDocked = (keyboard.IsKeyDown(Keys.Up) && _prevKeyboard.IsKeyUp(Keys.Up)) ||
+                            (keyboard.IsKeyDown(Keys.W) && _prevKeyboard.IsKeyUp(Keys.W));
+            bool enterDocked = keyboard.IsKeyDown(Keys.Enter) && _prevKeyboard.IsKeyUp(Keys.Enter);
+
+            if (escDocked)
+            {
                 _docked = false;
-            _game.Galaxy.CheckQuestProgress(_player);
+                return;
+            }
+
+            if (leftDocked)
+            {
+                _dockedTab = (_dockedTab - 1 + 3) % 3;
+                _dockedQuestSelection = 0;
+                _dockedMarketSelection = 0;
+            }
+            if (rightDocked)
+            {
+                _dockedTab = (_dockedTab + 1) % 3;
+                _dockedQuestSelection = 0;
+                _dockedMarketSelection = 0;
+            }
+
+            if (_dockedTab == 0)
+            {
+                // Market tab: Enter=buy, Backspace=sell
+                var economy = _game.Galaxy.Economy;
+                var resources = _game.Galaxy.AllResources
+                    .Where(r => economy.HasResource(_system.Id, r.Id))
+                    .ToList();
+                bool backDocked = keyboard.IsKeyDown(Keys.Back) && _prevKeyboard.IsKeyUp(Keys.Back);
+                if (downDocked)
+                    _dockedMarketSelection = (_dockedMarketSelection + 1) % Math.Max(1, resources.Count);
+                if (upDocked)
+                    _dockedMarketSelection = (_dockedMarketSelection - 1 + Math.Max(1, resources.Count)) % Math.Max(1, resources.Count);
+                if (enterDocked && resources.Count > 0)
+                {
+                    var res = resources[_dockedMarketSelection];
+                    economy.Buy(_player, _system.Id, res.Id, 1);
+                }
+                if (backDocked && resources.Count > 0)
+                {
+                    var res = resources[_dockedMarketSelection];
+                    economy.Sell(_player, _system.Id, res.Id, 1);
+                }
+            }
+            else if (_dockedTab == 1)
+            {
+                // Upgrades tab
+            }
+            else
+            {
+                // Quests tab
+                var available = _game.GetQuestsForSystem(_system.Id);
+                var activeHere = _game.Galaxy.ActiveQuests
+                    .Where(q => q.GiverSystem == _system.Id)
+                    .ToList();
+                var completable = activeHere
+                    .Where(q => _game.Galaxy.IsQuestObjectiveMet(q, _player))
+                    .ToList();
+                int selectableCount = available.Count + completable.Count;
+                if (selectableCount > 0)
+                {
+                    if (downDocked)
+                        _dockedQuestSelection = (_dockedQuestSelection + 1) % selectableCount;
+                    if (upDocked)
+                        _dockedQuestSelection = (_dockedQuestSelection - 1 + selectableCount) % selectableCount;
+
+                    if (enterDocked)
+                    {
+                        if (_dockedQuestSelection < available.Count)
+                        {
+                            _game.Galaxy.AcceptQuest(available[_dockedQuestSelection].Id);
+                            _dockedQuestSelection = 0;
+                        }
+                        else
+                        {
+                            int ci = _dockedQuestSelection - available.Count;
+                            if (ci < completable.Count)
+                            {
+                                _game.Galaxy.CompleteQuest(completable[ci], _player);
+                                _dockedQuestSelection = 0;
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         _prevKeyboard = keyboard;
@@ -1112,12 +1242,12 @@ public class SystemScene
     private void DrawDockedMenu(SpriteBatch sb, Texture2D pixel, SpriteFont font, SpriteFont titleFont,
         int screenW, int screenH, float t)
     {
-        // Dim background
+        if (_game == null) return;
         sb.Draw(pixel, new Microsoft.Xna.Framework.Rectangle(0, 0, screenW, screenH),
             new Color(0, 0, 0, 180));
 
-        int panelW = 600;
-        int panelH = 400;
+        int panelW = 640;
+        int panelH = screenH - 80;
         int px = (screenW - panelW) / 2;
         int py = (screenH - panelH) / 2;
 
@@ -1130,70 +1260,260 @@ public class SystemScene
 
         DrawSpacedText(sb, titleFont, $"{_station.Name}",
             new Microsoft.Xna.Framework.Vector2(textX, textY), Color.Cyan);
-        textY += 50;
+        textY += 40;
 
-        DrawSpacedText(sb, font, $"Credits: {_player.Credits}",
+        DrawSpacedText(sb, font, $"Credits: {_player.Credits}  |  Cargo: {_player.UsedCargo}/{_player.CargoCapacity}",
             new Microsoft.Xna.Framework.Vector2(textX, textY), Color.Yellow);
+        textY += 35;
+
+        // Tab bar
+        string[] tabs = { "  Market  ", "  Upgrades  ", "  Quests  " };
+        int tabX = textX;
+        for (int i = 0; i < tabs.Length; i++)
+        {
+            Color tc = i == _dockedTab ? Color.White : Color.Gray * 0.5f;
+            Color bg = i == _dockedTab ? new Color(40, 40, 70) : Color.Transparent;
+            var sz = font.MeasureString(tabs[i]);
+            sb.Draw(pixel, new Microsoft.Xna.Framework.Rectangle(tabX, textY, (int)sz.X + 8, (int)sz.Y + 4), bg);
+            DrawSpacedText(sb, font, tabs[i],
+                new Microsoft.Xna.Framework.Vector2(tabX + 4, textY + 2), tc);
+            tabX += (int)sz.X + 12;
+        }
+        textY += 40;
+
+        // Tab content
+        if (_dockedTab == 0)
+            DrawMarketTab(sb, pixel, font, titleFont, textX, textY, panelW, screenW, screenH, px, py);
+        else if (_dockedTab == 1)
+            DrawUpgradesTab(sb, pixel, font, titleFont, textX, textY, panelW, screenW, screenH, px, py);
+        else
+            DrawQuestsTab(sb, pixel, font, titleFont, textX, textY, panelW, screenW, screenH, px, py);
+
+        string foot = "[Left/Right] Tab  [Up/Dn] Select  [Enter] Buy  [BkSp] Sell  [ESC] Undock";
+        DrawSpacedText(sb, font, foot,
+            new Microsoft.Xna.Framework.Vector2(textX, screenH - py - 30), Color.Gray * 0.7f);
+    }
+
+    private void DrawMarketTab(SpriteBatch sb, Texture2D pixel, SpriteFont font, SpriteFont titleFont,
+        int textX, int textY, int panelW, int screenW, int screenH, int px, int py)
+    {
+        var economy = _game.Galaxy.Economy;
+        var resources = _game.Galaxy.AllResources
+            .Where(r => economy.HasResource(_system.Id, r.Id))
+            .OrderBy(r => r.Category)
+            .ThenBy(r => r.Name)
+            .ToList();
+
+        DrawSpacedText(sb, titleFont, "--- Market ---",
+            new Microsoft.Xna.Framework.Vector2(textX, textY), Color.Lime);
         textY += 30;
 
-        bool hasUpgrades = _system.Services.Contains("upgrades") || _system.Services.Contains("market");
-        if (hasUpgrades)
-        {
-            DrawSpacedText(sb, titleFont, "--- Upgrades Available ---",
-                new Microsoft.Xna.Framework.Vector2(textX, textY), Color.Lime);
-            textY += 30;
+        // Column positions
+        int cSel = 0;
+        int cName = 30;
+        int cBuy = 180;
+        int cSell = 260;
+        int cStock = 340;
+        int cCargo = 420;
+        int cHint = 500;
 
-            var upgrades = _game.GetUpgradesForSystem(_system.Id);
-            if (upgrades.Count == 0)
-            {
-                DrawSpacedText(sb, font, "  None available",
-                    new Microsoft.Xna.Framework.Vector2(textX, textY), Color.Gray);
-                textY += 24;
-            }
-            else
-            {
-                foreach (var up in upgrades)
-                {
-                    bool canAfford = _player.Credits >= up.Cost;
-                    Color c = canAfford ? Color.White : Color.Gray * 0.5f;
-                    DrawSpacedText(sb, font, $"  {up.Name} - {up.Cost}cr",
-                        new Microsoft.Xna.Framework.Vector2(textX, textY), c);
-                    textY += 18;
-                    DrawSpacedText(sb, font, $"    {up.Description}",
-                        new Microsoft.Xna.Framework.Vector2(textX, textY), Color.White * 0.4f);
-                    textY += 22;
-                }
-            }
-        }
-        else
+        // Header row background
+        int headerH = 22;
+        sb.Draw(pixel, new Microsoft.Xna.Framework.Rectangle(textX, textY, panelW - 40, headerH),
+            new Color(30, 30, 60));
+        DrawSpacedText(sb, font, "Item",
+            new Microsoft.Xna.Framework.Vector2(textX + cName, textY + 2), Color.Gold);
+        DrawSpacedText(sb, font, "Buy",
+            new Microsoft.Xna.Framework.Vector2(textX + cBuy, textY + 2), Color.Gold);
+        DrawSpacedText(sb, font, "Sell",
+            new Microsoft.Xna.Framework.Vector2(textX + cSell, textY + 2), Color.Gold);
+        DrawSpacedText(sb, font, "Stock",
+            new Microsoft.Xna.Framework.Vector2(textX + cStock, textY + 2), Color.Gold);
+        DrawSpacedText(sb, font, "Cargo",
+            new Microsoft.Xna.Framework.Vector2(textX + cCargo, textY + 2), Color.Gold);
+        sb.Draw(pixel, new Microsoft.Xna.Framework.Rectangle(textX, textY + headerH, panelW - 40, 1),
+            Color.Gold * 0.5f);
+        textY += headerH + 6;
+
+        int rowH = 20;
+        string? lastCategory = null;
+        for (int i = 0; i < resources.Count; i++)
         {
-            DrawSpacedText(sb, font, "No services available at this station.",
+            var r = resources[i];
+            bool selected = i == _dockedMarketSelection;
+            int stock = economy.GetStock(_system.Id, r.Id);
+            int buyPrice = economy.GetBuyPrice(_system.Id, r.Id);
+            int sellPrice = economy.GetSellPrice(_system.Id, r.Id);
+            var playerEntry = _player.Resources.FirstOrDefault(e => e.Id == r.Id);
+            int playerQty = playerEntry?.Quantity ?? 0;
+
+            // Category separator
+            if (r.Category != lastCategory)
+            {
+                lastCategory = r.Category;
+                DrawSpacedText(sb, font, r.Category.ToUpper(),
+                    new Microsoft.Xna.Framework.Vector2(textX, textY), Color.Gray * 0.5f);
+                textY += rowH;
+            }
+
+            // Row background for selected item
+            if (selected)
+                sb.Draw(pixel, new Microsoft.Xna.Framework.Rectangle(textX, textY, panelW - 40, rowH - 1),
+                    new Color(40, 50, 70));
+
+            Color c = selected ? Color.White : Color.LightGray;
+
+            // Selection marker
+            DrawSpacedText(sb, font, selected ? ">" : " ",
+                new Microsoft.Xna.Framework.Vector2(textX + cSel, textY), c);
+
+            // Name with symbol
+            DrawSpacedText(sb, font, $"[{r.Symbol}] {r.Name}",
+                new Microsoft.Xna.Framework.Vector2(textX + cName, textY), c);
+
+            // Buy price (green tint if affordable)
+            Color buyC = selected && _player.Credits >= buyPrice ? Color.Lime : c;
+            DrawSpacedText(sb, font, $"{buyPrice}cr",
+                new Microsoft.Xna.Framework.Vector2(textX + cBuy, textY), buyC);
+
+            // Sell price
+            Color sellC = selected && playerQty > 0 ? Color.Orange : c;
+            DrawSpacedText(sb, font, $"{sellPrice}cr",
+                new Microsoft.Xna.Framework.Vector2(textX + cSell, textY), sellC);
+
+            // Stock
+            string stockStr = stock > 0 ? $"{stock}" : "-";
+            DrawSpacedText(sb, font, stockStr,
+                new Microsoft.Xna.Framework.Vector2(textX + cStock, textY), c);
+
+            // Player cargo
+            string cargoStr = playerQty > 0 ? $"{playerQty}" : "-";
+            DrawSpacedText(sb, font, cargoStr,
+                new Microsoft.Xna.Framework.Vector2(textX + cCargo, textY), c);
+
+            // Action hint
+            if (selected)
+            {
+                bool canBuy = _player.Credits >= buyPrice && _player.UsedCargo + r.Volume <= _player.CargoCapacity;
+                bool canSell = playerQty > 0;
+                string hint = "";
+                if (canBuy) hint += "[Enter] Buy  ";
+                if (canSell) hint += "[BkSp] Sell";
+                if (hint.Length > 0)
+                    DrawSpacedText(sb, font, hint.Trim(),
+                        new Microsoft.Xna.Framework.Vector2(textX + cHint, textY), Color.Lime * 0.7f);
+            }
+
+            textY += rowH;
+        }
+    }
+
+    private void DrawUpgradesTab(SpriteBatch sb, Texture2D pixel, SpriteFont font, SpriteFont titleFont,
+        int textX, int textY, int panelW, int screenW, int screenH, int px, int py)
+    {
+        DrawSpacedText(sb, titleFont, "--- Upgrades ---",
+            new Microsoft.Xna.Framework.Vector2(textX, textY), Color.Gold);
+        textY += 30;
+
+        var upgrades = _game.GetUpgradesForSystem(_system.Id);
+        if (upgrades.Count == 0)
+        {
+            DrawSpacedText(sb, font, "  None available",
                 new Microsoft.Xna.Framework.Vector2(textX, textY), Color.Gray);
             textY += 24;
         }
+        else
+        {
+            foreach (var up in upgrades)
+            {
+                bool canAfford = _player.Credits >= up.Cost;
+                Color c = canAfford ? Color.White : Color.Gray * 0.5f;
+                DrawSpacedText(sb, font, $"  {up.Name} - {up.Cost}cr",
+                    new Microsoft.Xna.Framework.Vector2(textX, textY), c);
+                textY += 18;
+                DrawSpacedText(sb, font, $"    {up.Description}",
+                    new Microsoft.Xna.Framework.Vector2(textX, textY), Color.White * 0.4f);
+                textY += 22;
+            }
+        }
+    }
+    private void DrawQuestsTab(SpriteBatch sb, Texture2D pixel, SpriteFont font, SpriteFont titleFont,
+        int textX, int textY, int panelW, int screenW, int screenH, int px, int py)
+    {
+        var available = _game.GetQuestsForSystem(_system.Id);
+        var activeHere = _game.Galaxy.ActiveQuests
+            .Where(q => q.GiverSystem == _system.Id)
+            .ToList();
+        var completable = activeHere
+            .Where(q => _game.Galaxy.IsQuestObjectiveMet(q, _player))
+            .ToList();
+        var inProgress = activeHere
+            .Where(q => !_game.Galaxy.IsQuestObjectiveMet(q, _player))
+            .ToList();
+        var done = _player.CompletedQuests
+            .Select(id => _game.Galaxy.AllQuests.FirstOrDefault(q => q.Id == id))
+            .Where(q => q != null && q.GiverSystem == _system.Id)
+            .Cast<QuestData>()
+            .ToList();
 
-        textY += 20;
+        int sel = _dockedQuestSelection;
+        int maxBodyW = panelW - 60;
+        bool hasAny = available.Count > 0 || completable.Count > 0 || inProgress.Count > 0 || done.Count > 0;
 
-        var quests = _game.GetQuestsForSystem(_system.Id);
-        if (quests.Count > 0)
+        if (hasAny)
         {
             DrawSpacedText(sb, titleFont, "--- Quests ---",
                 new Microsoft.Xna.Framework.Vector2(textX, textY), Color.Gold);
             textY += 30;
 
-            foreach (var q in quests)
+            for (int i = 0; i < available.Count; i++)
             {
-                DrawSpacedText(sb, font, $"  {q.Name} - {q.RewardCredits}cr",
-                    new Microsoft.Xna.Framework.Vector2(textX, textY), Color.White);
+                var q = available[i];
+                bool selected = sel == i;
+                Color c = selected ? Color.Yellow : Color.White;
+                string prefix = selected ? "> " : "  ";
+                DrawSpacedText(sb, font, $"{prefix}{q.Name} - {q.RewardCredits}cr",
+                    new Microsoft.Xna.Framework.Vector2(textX, textY), c);
                 textY += 18;
-                DrawSpacedText(sb, font, $"    {q.Description}",
+                textY = WrapAndDraw(sb, font, q.Description, textX + 16, textY,
+                    maxBodyW - 16, selected ? Color.Yellow * 0.6f : Color.White * 0.6f, 14);
+                textY += 22;
+            }
+
+            for (int i = 0; i < completable.Count; i++)
+            {
+                var q = completable[i];
+                bool selected = sel == available.Count + i;
+                Color c = selected ? Color.Lime : Color.Lime * 0.7f;
+                string prefix = selected ? "> " : "  ";
+                DrawSpacedText(sb, font, $"{prefix}{q.Name} - {q.RewardCredits}cr",
+                    new Microsoft.Xna.Framework.Vector2(textX, textY), c);
+                textY += 18;
+                DrawSpacedText(sb, font, $"  Objective complete - [Turn In]",
+                    new Microsoft.Xna.Framework.Vector2(textX, textY), c * 0.7f);
+                textY += 22;
+            }
+
+            foreach (var q in inProgress)
+            {
+                DrawSpacedText(sb, font, $"  {q.Name}",
                     new Microsoft.Xna.Framework.Vector2(textX, textY), Color.White * 0.5f);
-                textY += 24;
+                textY += 18;
+                string status = q.ObjectiveType == "travel"
+                    ? $"Travel to {q.TargetSystem}"
+                    : $"Find {q.TargetItem} in {q.TargetSystem}";
+                textY = WrapAndDraw(sb, font, status, textX + 16, textY,
+                    maxBodyW - 16, Color.White * 0.3f, 14);
+                textY += 22;
+            }
+
+            foreach (var q in done)
+            {
+                DrawSpacedText(sb, font, $"  {q.Name} [Completed]",
+                    new Microsoft.Xna.Framework.Vector2(textX, textY), Color.Gray * 0.5f);
+                textY += 22;
             }
         }
-
-        DrawSpacedText(sb, font, "[E] Buy selected  |  [Q] Accept quest  |  [ESC] Undock",
-            new Microsoft.Xna.Framework.Vector2(textX, screenH - py - 30), Color.Gray * 0.7f);
     }
 
     private void DrawSystemHUD(SpriteBatch sb, SpriteFont font, int screenW, int screenH,
@@ -1238,6 +1558,16 @@ public class SystemScene
         DrawSpacedText(sb, font, distText,
             new Microsoft.Xna.Framework.Vector2(arrowPos.X - ts.X / 2f, arrowPos.Y + arrowSize + 3f),
             c * 0.7f);
+
+        // Waypoint target name
+        if (_waypointIndex < _waypointTargets.Count)
+        {
+            string wpName = _waypointTargets[_waypointIndex].name;
+            var ns = font.MeasureString(wpName);
+            DrawSpacedText(sb, font, wpName,
+                new Microsoft.Xna.Framework.Vector2(arrowPos.X - ns.X / 2f, arrowPos.Y + arrowSize + 18f),
+                c * 0.5f);
+        }
     }
 
     private void DrawMiniMap(SpriteBatch sb, Texture2D pixel, SpriteFont font, int screenW, int screenH)
@@ -1296,13 +1626,43 @@ public class SystemScene
                 FillCircle(sb, pixel, ex, ey, 2.5f, new Color(255, 140, 0));
         }
 
+        // Quest objective markers on minimap (actual positions)
+        if (_game != null)
+        {
+            foreach (var q in _game.Galaxy.ActiveQuests)
+            {
+                if (q.TargetSystem != _system.Id) continue;
+                Vector2 qPos;
+                if (q.ObjectiveType == "collect" && _lifepodActive)
+                    qPos = new Vector2(_lifepod.X, _lifepod.Y);
+                else
+                    continue;
+                float qx = cx + qPos.X * scale;
+                float qy = cy + qPos.Y * scale;
+                if (qx < mx - 3 || qx > mx + mapSize + 3 || qy < my - 3 || qy > my + mapSize + 3)
+                    continue;
+                float qs = 4f;
+                var qc = Color.Gold;
+                DrawLine(sb, pixel, qx, qy - qs, qx + qs * 0.6f, qy, qc);
+                DrawLine(sb, pixel, qx + qs * 0.6f, qy, qx, qy + qs, qc);
+                DrawLine(sb, pixel, qx, qy + qs, qx - qs * 0.6f, qy, qc);
+                DrawLine(sb, pixel, qx - qs * 0.6f, qy, qx, qy - qs, qc);
+            }
+        }
+
         // Waypoint icon label below mini-map
         float iconY = my + mapSize + 6;
         FillCircle(sb, pixel, mx + 4, iconY + 3, 3f, Color.LightBlue);
         DrawLine(sb, pixel, mx + 4, iconY, mx + 4, iconY + 2, Color.Cyan);
-        string wpLabel = _system.Station?.Name ?? "None";
+        string wpLabel = _waypointIndex < _waypointTargets.Count
+            ? _waypointTargets[_waypointIndex].name : "None";
         DrawSpacedText(sb, font, wpLabel,
             new Microsoft.Xna.Framework.Vector2(mx + 10, iconY - 2), Color.LightBlue * 0.8f);
+        if (_waypointTargets.Count > 1)
+        {
+            DrawSpacedText(sb, font, "[Tab]",
+                new Microsoft.Xna.Framework.Vector2(mx + 10, iconY + 12), Color.Gray * 0.4f);
+        }
     }
 
     // Drawing helpers
@@ -1612,6 +1972,49 @@ public class SystemScene
         }
     }
 
+    private static int WrapAndDraw(SpriteBatch sb, SpriteFont font, string text, int x, int y,
+        int maxWidth, Color color, int lineSpacing)
+    {
+        if (string.IsNullOrEmpty(text)) return y;
+
+        string[] words = text.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (words.Length == 0) return y;
+
+        float spaceW = 8f;
+
+        var lines = new List<string>();
+        string currentLine = words[0];
+
+        for (int i = 1; i < words.Length; i++)
+        {
+            string testLine = currentLine + " " + words[i];
+            float w = 0;
+            string[] testParts = testLine.Split(' ');
+            foreach (var p in testParts)
+            {
+                if (p.Length > 0)
+                    w += font.MeasureString(p).X + (w > 0 ? spaceW : 0);
+            }
+            if (w > maxWidth)
+            {
+                lines.Add(currentLine);
+                currentLine = words[i];
+            }
+            else
+            {
+                currentLine = testLine;
+            }
+        }
+        if (currentLine.Length > 0) lines.Add(currentLine);
+
+        foreach (var line in lines)
+        {
+            DrawSpacedText(sb, font, line, new Microsoft.Xna.Framework.Vector2(x, y), color);
+            y += lineSpacing;
+        }
+        return y;
+    }
+
     private static void DrawSpacedText(SpriteBatch sb, SpriteFont font, string text, Microsoft.Xna.Framework.Vector2 position, Color color)
     {
         if (text.Length == 0) return;
@@ -1623,8 +2026,7 @@ public class SystemScene
             return;
         }
 
-        float spaceW = font.MeasureString(" ").X;
-        if (spaceW < 1f) spaceW = font.MeasureString("M").X;
+        float spaceW = 8f;
 
         float x = position.X;
         float y = position.Y;
@@ -1642,3 +2044,4 @@ public class SystemScene
         }
     }
 }
+

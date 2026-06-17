@@ -42,6 +42,8 @@ public class Game1 : Game
 
     private enum Overlay { None, SystemMap, GalaxyMap, Inventory }
     private Overlay _overlay = Overlay.None;
+    private bool _showQuestLog;
+    private int _questLogSelection;
     private SystemScene _systemScene = null!;
     private Vector2 _galaxyPlayerPos;
     private Vector2 _galaxyPlayerVel;
@@ -204,22 +206,34 @@ public class Game1 : Game
         float dt = (float)gameTime.ElapsedGameTime.TotalSeconds;
         if (dt > 0.05f) dt = 0.05f;
 
+        _galaxy.Economy?.Tick(dt);
+
         var keyboard = Keyboard.GetState();
         var mouse = Mouse.GetState();
 
-        // Overlay toggle (T = system map, G = galaxy map, I = inventory)
-        if (JustPressed(keyboard, Keys.T))
+        // Overlay toggle (T = system map, G = galaxy map, I = inventory, Q = quest log)
+        bool tHit = keyboard.IsKeyDown(Keys.T) && _prevKeyboard.IsKeyUp(Keys.T);
+        bool gHit = keyboard.IsKeyDown(Keys.G) && _prevKeyboard.IsKeyUp(Keys.G);
+        bool iHit = keyboard.IsKeyDown(Keys.I) && _prevKeyboard.IsKeyUp(Keys.I);
+        bool qHit = keyboard.IsKeyDown(Keys.Q) && _prevKeyboard.IsKeyUp(Keys.Q);
+
+        if (tHit)
         {
+            _showQuestLog = false;
             if (_overlay == Overlay.SystemMap)
                 _overlay = Overlay.None;
             else if (_galaxy.CurrentSystem != null)
                 _overlay = Overlay.SystemMap;
         }
-        if (JustPressed(keyboard, Keys.G))
-            _overlay = _overlay == Overlay.GalaxyMap ? Overlay.None : Overlay.GalaxyMap;
-
-        if (JustPressed(keyboard, Keys.I))
+        if (gHit)
         {
+            _showQuestLog = false;
+            _overlay = _overlay == Overlay.GalaxyMap ? Overlay.None : Overlay.GalaxyMap;
+        }
+
+        if (iHit)
+        {
+            _showQuestLog = false;
             if (_overlay == Overlay.Inventory)
                 _overlay = Overlay.None;
             else
@@ -230,20 +244,35 @@ public class Game1 : Game
             }
         }
 
+        bool wasShowingQuestLog = _showQuestLog;
+        if (qHit)
+        {
+            if (_overlay == Overlay.None && _currentMenu == MenuType.None)
+                _showQuestLog = !_showQuestLog;
+        }
+
         if (_overlay != Overlay.None)
         {
-            if (JustPressed(keyboard, Keys.Escape))
+            bool ovEsc = keyboard.IsKeyDown(Keys.Escape) && _prevKeyboard.IsKeyUp(Keys.Escape);
+            if (ovEsc)
                 _overlay = Overlay.None;
 
             if (_overlay == Overlay.Inventory)
             {
-                if (JustPressed(keyboard, Keys.Left) || JustPressed(keyboard, Keys.Q))
+                bool invLeft = keyboard.IsKeyDown(Keys.Left) && _prevKeyboard.IsKeyUp(Keys.Left);
+                bool invRight = (keyboard.IsKeyDown(Keys.Right) && _prevKeyboard.IsKeyUp(Keys.Right)) ||
+                                (keyboard.IsKeyDown(Keys.E) && _prevKeyboard.IsKeyUp(Keys.E));
+                bool invDown = (keyboard.IsKeyDown(Keys.Down) && _prevKeyboard.IsKeyUp(Keys.Down)) ||
+                               (keyboard.IsKeyDown(Keys.S) && _prevKeyboard.IsKeyUp(Keys.S));
+                bool invUp = (keyboard.IsKeyDown(Keys.Up) && _prevKeyboard.IsKeyUp(Keys.Up)) ||
+                             (keyboard.IsKeyDown(Keys.W) && _prevKeyboard.IsKeyUp(Keys.W));
+                if (invLeft)
                     _inventoryTab = (_inventoryTab - 1 + 3) % 3;
-                if (JustPressed(keyboard, Keys.Right) || JustPressed(keyboard, Keys.E))
+                if (invRight)
                     _inventoryTab = (_inventoryTab + 1) % 3;
-                if (JustPressed(keyboard, Keys.Down) || JustPressed(keyboard, Keys.S))
+                if (invDown)
                     _invScroll++;
-                if (JustPressed(keyboard, Keys.Up) || JustPressed(keyboard, Keys.W))
+                if (invUp)
                     _invScroll--;
                 if (_invScroll < 0) _invScroll = 0;
             }
@@ -252,6 +281,27 @@ public class Game1 : Game
             _prevMouse = mouse;
             base.Update(gameTime);
             return;
+        }
+
+        // Quest log overlay (non-pausing)
+        if (_showQuestLog)
+        {
+            bool qlDown = (keyboard.IsKeyDown(Keys.Down) && _prevKeyboard.IsKeyUp(Keys.Down)) ||
+                          (keyboard.IsKeyDown(Keys.S) && _prevKeyboard.IsKeyUp(Keys.S));
+            bool qlUp = (keyboard.IsKeyDown(Keys.Up) && _prevKeyboard.IsKeyUp(Keys.Up)) ||
+                        (keyboard.IsKeyDown(Keys.W) && _prevKeyboard.IsKeyUp(Keys.W));
+            bool qlQ = keyboard.IsKeyDown(Keys.Q) && _prevKeyboard.IsKeyUp(Keys.Q);
+            bool qlEsc = keyboard.IsKeyDown(Keys.Escape) && _prevKeyboard.IsKeyUp(Keys.Escape);
+
+            if (qlDown)
+                _questLogSelection++;
+            if (qlUp)
+                _questLogSelection--;
+            int maxQ = Math.Max(0, _galaxy.ActiveQuests.Count - 1);
+            if (_questLogSelection < 0) _questLogSelection = maxQ;
+            if (_questLogSelection > maxQ) _questLogSelection = 0;
+            if ((wasShowingQuestLog && qlQ) || qlEsc)
+                _showQuestLog = false;
         }
 
         if (_viewMode == ViewMode.Galaxy)
@@ -370,22 +420,6 @@ public class Game1 : Game
                 _currentMenu = MenuType.Pause;
                 _menuSelection = 0;
                 return;
-            }
-
-            if (JustPressed(keyboard, Keys.Q))
-            {
-                var sys = _galaxy.FindSystemAtPosition(_player.Position, 80f);
-                if (sys != null)
-                {
-                    var available = _galaxy.AvailableQuests
-                        .Where(q => q.GiverSystem == sys.Id)
-                        .ToList();
-                    if (available.Count > 0)
-                    {
-                        _galaxy.AcceptQuest(available[0].Id);
-                        SetStatus($"Accepted quest: {available[0].Name}");
-                    }
-                }
             }
         }
         else if (_currentMenu == MenuType.Pause)
@@ -608,6 +642,9 @@ public class Game1 : Game
             DrawGalaxyMapOverlay();
         else if (_overlay == Overlay.Inventory)
             DrawInventoryOverlay();
+
+        if (_showQuestLog)
+            DrawQuestLog();
 
         _spriteBatch.End();
 
@@ -1189,7 +1226,6 @@ public class Game1 : Game
                 "  D / Right     Rotate right",
                 "  Shift         Boost",
                 "  Enter         Enter system",
-                "  Q             Accept quest",
                 "",
                 "System View",
                 "  W / Up        Thrust forward",
@@ -1204,6 +1240,7 @@ public class Game1 : Game
                 "  T             System map",
                 "  G             Galaxy map",
                 "  I             Inventory",
+                "  Q             Quest log",
             };
 
             float lx = (ScreenWidth - 500) / 2f;
@@ -1455,6 +1492,66 @@ public class Game1 : Game
             Color.Gray * 0.7f);
     }
 
+    private void DrawQuestLog()
+    {
+        _spriteBatch.Draw(_pixel, new Microsoft.Xna.Framework.Rectangle(0, 0, ScreenWidth, ScreenHeight),
+            new Color(0, 0, 0, 180));
+
+        int panelW = 640;
+        int panelH = ScreenHeight - 80;
+        int px = (ScreenWidth - panelW) / 2;
+        int py = 40;
+
+        _spriteBatch.Draw(_pixel, new Microsoft.Xna.Framework.Rectangle(px, py, panelW, panelH),
+            new Color(10, 10, 30, 230));
+        int textX = px + 20;
+        int textY = py + 20;
+
+        DrawSpacedText(_titleFont, "Quest Log",
+            new Microsoft.Xna.Framework.Vector2(textX, textY), Color.Cyan);
+        textY += 40;
+
+        var active = _galaxy.ActiveQuests;
+        if (active.Count == 0)
+        {
+            DrawSpacedText(_font, "No active quests.",
+                new Microsoft.Xna.Framework.Vector2(textX, textY), Color.Gray);
+        }
+        else
+        {
+            for (int i = 0; i < active.Count; i++)
+            {
+                var q = active[i];
+                bool selected = i == _questLogSelection;
+                string prefix = selected ? "> " : "  ";
+                Color c = selected ? Color.Yellow : Color.White;
+
+                DrawSpacedText(_font, $"{prefix}{q.Name}",
+                    new Microsoft.Xna.Framework.Vector2(textX, textY), c);
+                textY += 22;
+
+                DrawSpacedText(_font, $"  {q.Description}",
+                    new Microsoft.Xna.Framework.Vector2(textX, textY), c * 0.6f);
+                textY += 20;
+
+                string location = q.ObjectiveType == "travel"
+                    ? $"Target: {q.TargetSystem}"
+                    : $"Search {q.TargetSystem} for {q.TargetItem}";
+                bool objectiveMet = _galaxy.IsQuestObjectiveMet(q, _player);
+                if (objectiveMet)
+                    DrawSpacedText(_font, $"  {location} - Objective Complete!",
+                        new Microsoft.Xna.Framework.Vector2(textX, textY), Color.Lime);
+                else
+                    DrawSpacedText(_font, $"  {location}",
+                        new Microsoft.Xna.Framework.Vector2(textX, textY), c * 0.4f);
+                textY += 26;
+            }
+        }
+
+        DrawSpacedText(_font, "[Up/Dn] Scroll  [Q/ESC] Close",
+            new Microsoft.Xna.Framework.Vector2(textX, panelH + py - 30), Color.Gray * 0.6f);
+    }
+
     private void DrawInventoryOverlay()
     {
         _spriteBatch.Draw(_pixel, new Microsoft.Xna.Framework.Rectangle(0, 0, ScreenWidth, ScreenHeight),
@@ -1607,8 +1704,7 @@ public class Game1 : Game
             return;
         }
 
-        float spaceW = font.MeasureString(" ").X;
-        if (spaceW < 1f) spaceW = font.MeasureString("M").X;
+        float spaceW = 8f;
 
         float x = position.X;
         float y = position.Y;

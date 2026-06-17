@@ -8,7 +8,7 @@
       "radius": 40,
       "color": "FF6644",
       "description": "A small red dwarf star orbited by several rocky worlds. A good starting point for new pilots.",
-      "connections": ["alpha", "barnard", "tribune"],
+      "connections": ["alpha", "barnard", "tribune", "regulus"],
       "services": ["fuel", "repair", "market"],
       "hostility": 0,
       "faction": "Terran Federation",
@@ -17,7 +17,11 @@
         { "name": "Proxima I", "orbitRadius": 6000, "radius": 810, "color": "AA8866", "orbitSpeed": 0.0125 },
         { "name": "Proxima II", "orbitRadius": 9600, "radius": 630, "color": "88AA66", "orbitSpeed": 0.0075 }
       ],
-      "station": { "name": "Proxima Station", "orbitRadius": 4200, "orbitSpeed": 0.00125 }
+      "station": { "name": "Proxima Station", "orbitRadius": 4200, "orbitSpeed": 0.00125 },
+      "economy": {
+        "production": { "fe": 60, "cu": 30, "al": 40, "si": 80, "c": 100, "h": 50 },
+        "demand": { "h": 1.0, "fe": 1.0, "cu": 0.8, "al": 0.8, "ti": 0.8, "si": 1.0, "c": 0.8 }
+      }
     },
     {
       "id": "alpha",
@@ -27,7 +31,7 @@
       "radius": 50,
       "color": "FFDD88",
       "description": "The brightest star in the Centaurus constellation. Home to a thriving trade port.",
-      "connections": ["proxima", "vega", "cygnus"],
+      "connections": ["proxima", "vega", "cygnus", "sirius", "altair", "capella"],
       "services": ["fuel", "repair", "market", "upgrades"],
       "hostility": 1,
       "faction": "Terran Federation",
@@ -37,7 +41,11 @@
         { "name": "Alpha II", "orbitRadius": 12000, "radius": 990, "color": "CCAA88", "orbitSpeed": 0.00625 },
         { "name": "Alpha III", "orbitRadius": 16800, "radius": 720, "color": "AACC88", "orbitSpeed": 0.005 }
       ],
-      "station": { "name": "Centauri Hub", "orbitRadius": 4800, "orbitSpeed": 0.0009375 }
+      "station": { "name": "Centauri Hub", "orbitRadius": 4800, "orbitSpeed": 0.0009375 },
+      "economy": {
+        "production": { "fe": 120, "cu": 80, "al": 100, "ti": 60, "si": 150, "c": 200, "h": 80 },
+        "demand": { "h": 1.5, "he3": 1.0, "fe": 1.5, "cu": 1.5, "al": 1.5, "ti": 1.2, "si": 1.5, "li": 1.5, "ag": 2.0, "pt": 1.5, "au": 2.0, "nd": 1.5 }
+      }
     },
     {
       "id": "barnard",
@@ -47,7 +55,7 @@
       "radius": 30,
       "color": "FF8844",
       "description": "A dim red dwarf on the fringe of Federation space. Rumors of pirates persist.",
-      "connections": ["proxima", "tribune"],
+      "connections": ["proxima", "tribune", "regulus", "fomalhaut", "aldebaran", "aquila"],
       "services": ["fuel"],
       "hostility": 4,
       "faction": "Independent",
@@ -55,7 +63,11 @@
       "planets": [
         { "name": "Barnard I", "orbitRadius": 5400, "radius": 990, "color": "888866", "orbitSpeed": 0.01125 }
       ],
-      "station": { "name": "Fringe Post", "orbitRadius": 3600, "orbitSpeed": 0.00140625 }
+      "station": { "name": "Fringe Post", "orbitRadius": 3600, "orbitSpeed": 0.00140625 },
+      "economy": {
+        "production": { "fe": 50, "al": 40, "cu": 30, "u": 20, "h": 80 },
+        "demand": { "h": 2.0, "he3": 1.5, "fe": 1.8, "cu": 1.5, "al": 1.5, "ti": 1.5, "si": 1.5, "c": 1.5, "u": 1.2 }
+      }
     },
     {
       "id": "tribune",
@@ -65,7 +77,7 @@
       "radius": 35,
       "color": "AACCFF",
       "description": "A mysterious blue-white star system. Little is known about its planets.",
-      "connections": ["proxima", "barnard", "vega"],
+      "connections": ["proxima", "barnard", "vega", "fomalhaut", "spica", "arcturus", "aldebaran"],
       "services": ["fuel", "market"],
       "hostility": 2,
       "faction": "Free Worlds Alliance",
@@ -74,7 +86,11 @@
         { "name": "Tribune I", "orbitRadius": 6600, "radius": 720, "color": "88CCCC", "orbitSpeed": 0.009375 },
         { "name": "Tribune II", "orbitRadius": 10800, "radius": 540, "color": "CCCCAA", "orbitSpeed": 0.006875 }
       ],
-      "station": { "name": "Tribune Orbital", "orbitRadius": 4500, "orbitSpeed": 0.00109375 }
+      "station": { "name": "Tribune Orbital", "orbitRadius": 4500, "orbitSpeed": 0.00109375 },
+      "economy": {
+        "production": { "he3": 30, "nd": 15, "li": 40, "ag": 20, "au": 10 },
+        "demand": { "h": 1.0, "c": 0.5, "si": 0.5, "fe": 0.6, "cu": 0.6, "al": 0.6, "nd": 1.5, "li": 1.5, "ag": 1.0, "au": 1.0, "pt": 1.0 }
+      }
     },
     {
       "id": "vega",
@@ -84,7 +100,7 @@
       "radius": 55,
       "color": "AADDFF",
       "description": "A brilliant blue star and a hub of scientific research. The Vega station offers rare upgrades.",
-      "connections": ["alpha", "tribune", "cygnus", "draco"],
+      "connections": ["alpha", "tribune", "cygnus", "draco", "sirius", "lyra", "rigel"],
       "services": ["fuel", "repair", "market", "upgrades"],
       "hostility": 1,
       "faction": "Terran Federation",
@@ -94,7 +110,11 @@
         { "name": "Vega II", "orbitRadius": 13200, "radius": 1170, "color": "7799AA", "orbitSpeed": 0.005625 },
         { "name": "Vega III", "orbitRadius": 18000, "radius": 810, "color": "88AABB", "orbitSpeed": 0.00375 }
       ],
-      "station": { "name": "Vega Research Station", "orbitRadius": 5400, "orbitSpeed": 0.00078125 }
+      "station": { "name": "Vega Research Station", "orbitRadius": 5400, "orbitSpeed": 0.00078125 },
+      "economy": {
+        "production": { "si": 200, "nd": 25, "li": 60, "fe": 60, "cu": 40, "al": 50, "ti": 30, "h": 50 },
+        "demand": { "h": 1.2, "he3": 1.0, "fe": 1.2, "cu": 1.2, "al": 1.2, "ti": 1.0, "si": 1.5, "li": 2.0, "ag": 2.0, "pt": 2.5, "au": 2.5, "nd": 3.0 }
+      }
     },
     {
       "id": "cygnus",
@@ -104,13 +124,17 @@
       "radius": 28,
       "color": "FFEEAA",
       "description": "A remote outpost built into an asteroid belt. A good place to lay low.",
-      "connections": ["alpha", "vega", "draco"],
+      "connections": ["alpha", "vega", "draco", "lyra", "deneb"],
       "services": ["fuel", "market"],
       "hostility": 3,
       "faction": "Independent",
       "starRadius": 500,
       "planets": [],
-      "station": { "name": "Cygnus Outpost", "orbitRadius": 3000, "orbitSpeed": 0.0015625 }
+      "station": { "name": "Cygnus Outpost", "orbitRadius": 3000, "orbitSpeed": 0.0015625 },
+      "economy": {
+        "production": { "fe": 80, "cu": 60, "u": 30, "ti": 40, "al": 30 },
+        "demand": { "h": 1.8, "he3": 1.2, "c": 1.5, "si": 1.5, "fe": 1.2, "cu": 1.0, "al": 1.0, "ti": 1.0, "u": 1.0 }
+      }
     },
     {
       "id": "draco",
@@ -120,7 +144,7 @@
       "radius": 45,
       "color": "FF8844",
       "description": "The capital of the Free Worlds Alliance. Heavily fortified and prosperous.",
-      "connections": ["vega", "cygnus"],
+      "connections": ["vega", "cygnus", "rigel", "antares"],
       "services": ["fuel", "repair", "market", "upgrades"],
       "hostility": 0,
       "faction": "Free Worlds Alliance",
@@ -129,7 +153,679 @@
         { "name": "Draco Prime I", "orbitRadius": 7200, "radius": 1260, "color": "CCAA88", "orbitSpeed": 0.01 },
         { "name": "Draco Prime II", "orbitRadius": 11400, "radius": 900, "color": "88CCAA", "orbitSpeed": 0.00625 }
       ],
-      "station": { "name": "Draco Capital Station", "orbitRadius": 4620, "orbitSpeed": 0.0009375 }
+      "station": { "name": "Draco Capital Station", "orbitRadius": 4620, "orbitSpeed": 0.0009375 },
+      "economy": {
+        "production": { "fe": 80, "cu": 60, "al": 70, "ti": 50, "si": 120, "c": 150, "h": 60, "nd": 15, "li": 40, "ag": 30, "au": 20, "he3": 20 },
+        "demand": { "h": 1.5, "he3": 1.2, "fe": 1.5, "cu": 1.5, "al": 1.5, "ti": 1.2, "si": 1.5, "li": 2.0, "ag": 2.5, "pt": 2.0, "au": 2.5, "nd": 2.0 }
+      }
+    },
+    {
+      "id": "sirius",
+      "name": "Sirius",
+      "x": 4000,
+      "y": -500,
+      "radius": 50,
+      "color": "AADDFF",
+      "description": "The brightest star in the night sky. Sirius A is home to a bustling colonial presence.",
+      "connections": ["alpha", "vega", "betelgeuse", "altair"],
+      "services": ["fuel", "repair", "market", "upgrades"],
+      "hostility": 1,
+      "faction": "Terran Federation",
+      "starRadius": 1100,
+      "planets": [
+        { "name": "Sirius I", "orbitRadius": 7800, "radius": 1440, "color": "88CCFF", "orbitSpeed": 0.009375 },
+        { "name": "Sirius II", "orbitRadius": 12600, "radius": 1080, "color": "AADDEE", "orbitSpeed": 0.00625 },
+        { "name": "Sirius III", "orbitRadius": 17400, "radius": 720, "color": "99BBDD", "orbitSpeed": 0.00375 }
+      ],
+      "station": { "name": "Sirius Orbital", "orbitRadius": 5000, "orbitSpeed": 0.0009375 },
+      "economy": {
+        "production": { "fe": 100, "cu": 70, "al": 80, "ti": 50, "si": 130, "c": 180, "h": 70 },
+        "demand": { "h": 1.3, "he3": 0.8, "fe": 1.3, "cu": 1.3, "al": 1.3, "ti": 1.1, "si": 1.3, "li": 1.2, "ag": 1.5, "pt": 1.2, "au": 1.5, "nd": 1.2 }
+      }
+    },
+    {
+      "id": "altair",
+      "name": "Altair",
+      "x": 3500,
+      "y": -1200,
+      "radius": 42,
+      "color": "FFDD88",
+      "description": "A bright white star in the Aquila constellation. Altair's ports boast the finest racing in the galaxy.",
+      "connections": ["alpha", "capella", "sirius"],
+      "services": ["fuel", "repair", "market"],
+      "hostility": 2,
+      "faction": "Free Worlds Alliance",
+      "starRadius": 950,
+      "planets": [
+        { "name": "Altair I", "orbitRadius": 6600, "radius": 1170, "color": "DDCC88", "orbitSpeed": 0.00875 },
+        { "name": "Altair II", "orbitRadius": 12000, "radius": 810, "color": "CCBB77", "orbitSpeed": 0.005625 }
+      ],
+      "station": { "name": "Altair Station", "orbitRadius": 4200, "orbitSpeed": 0.00109375 },
+      "economy": {
+        "production": { "nd": 10, "li": 30, "ag": 25, "au": 15, "pt": 8, "he3": 20 },
+        "demand": { "h": 1.0, "fe": 1.0, "cu": 0.8, "al": 0.8, "ti": 0.8, "si": 0.8, "c": 0.8, "li": 1.0, "ag": 1.5, "au": 1.5, "pt": 1.2, "nd": 1.5 }
+      }
+    },
+    {
+      "id": "capella",
+      "name": "Capella",
+      "x": 2800,
+      "y": -1500,
+      "radius": 48,
+      "color": "FFEE66",
+      "description": "A golden giant in the constellation Auriga. Capella's agricultural colonies feed the Federation.",
+      "connections": ["alpha", "altair", "leo"],
+      "services": ["fuel", "repair", "market", "upgrades"],
+      "hostility": 0,
+      "faction": "Terran Federation",
+      "starRadius": 1050,
+      "planets": [
+        { "name": "Capella I", "orbitRadius": 8400, "radius": 1350, "color": "99CC66", "orbitSpeed": 0.009375 },
+        { "name": "Capella II", "orbitRadius": 13200, "radius": 1080, "color": "88BB55", "orbitSpeed": 0.00625 },
+        { "name": "Capella III", "orbitRadius": 18000, "radius": 650, "color": "77AA44", "orbitSpeed": 0.004375 }
+      ],
+      "station": { "name": "Capella Agro Hub", "orbitRadius": 5200, "orbitSpeed": 0.00078125 },
+      "economy": {
+        "production": { "c": 250, "si": 100, "h": 60, "fe": 50, "cu": 30, "al": 40 },
+        "demand": { "h": 1.0, "fe": 1.2, "cu": 1.0, "al": 1.0, "ti": 0.8, "si": 1.0, "li": 0.8, "ag": 1.2, "au": 1.0, "pt": 0.8, "nd": 0.8 }
+      }
+    },
+    {
+      "id": "regulus",
+      "name": "Regulus",
+      "x": 800,
+      "y": -1600,
+      "radius": 38,
+      "color": "CCDDFF",
+      "description": "The heart of the Lion. Regulus is a loyalist Federation system with a strong naval presence.",
+      "connections": ["proxima", "barnard", "leo", "aquila"],
+      "services": ["fuel", "repair", "market"],
+      "hostility": 1,
+      "faction": "Terran Federation",
+      "starRadius": 900,
+      "planets": [
+        { "name": "Regulus I", "orbitRadius": 7200, "radius": 1260, "color": "AACCEE", "orbitSpeed": 0.008125 },
+        { "name": "Regulus II", "orbitRadius": 11400, "radius": 900, "color": "BBDDFF", "orbitSpeed": 0.005625 }
+      ],
+      "station": { "name": "Regulus Naval Yard", "orbitRadius": 4000, "orbitSpeed": 0.00125 },
+      "economy": {
+        "production": { "fe": 90, "cu": 60, "al": 70, "ti": 80, "si": 100, "c": 120, "h": 50 },
+        "demand": { "h": 1.2, "fe": 1.8, "cu": 1.5, "al": 1.5, "ti": 2.0, "si": 1.2, "u": 1.5, "li": 1.0, "ag": 1.0, "au": 0.8, "pt": 0.8 }
+      }
+    },
+    {
+      "id": "fomalhaut",
+      "name": "Fomalhaut",
+      "x": -2500,
+      "y": -400,
+      "radius": 26,
+      "color": "AACCFF",
+      "description": "A lonely white star on the fringe. Fomalhaut's single asteroid field offers little save shelter for outlaws.",
+      "connections": ["barnard", "tribune", "aldebaran"],
+      "services": ["fuel"],
+      "hostility": 4,
+      "faction": "Independent",
+      "starRadius": 650,
+      "planets": [],
+      "station": null,
+      "economy": {
+        "production": { "u": 25, "he3": 20, "h": 60, "fe": 30 },
+        "demand": { "h": 2.0, "he3": 1.5, "fe": 1.5, "cu": 1.3, "al": 1.3, "ti": 1.3, "c": 1.5, "si": 1.5, "u": 1.0, "ag": 0.5, "au": 0.5 }
+      }
+    },
+    {
+      "id": "lyra",
+      "name": "Lyra",
+      "x": 600,
+      "y": 2500,
+      "radius": 40,
+      "color": "DDAACC",
+      "description": "A blue-white star system known for its crystalline moons and Alliance military academy.",
+      "connections": ["vega", "cygnus", "spica"],
+      "services": ["fuel", "repair", "market", "upgrades"],
+      "hostility": 1,
+      "faction": "Free Worlds Alliance",
+      "starRadius": 1000,
+      "planets": [
+        { "name": "Lyra I", "orbitRadius": 6900, "radius": 1125, "color": "CC99BB", "orbitSpeed": 0.00875 },
+        { "name": "Lyra II", "orbitRadius": 12600, "radius": 855, "color": "BB88AA", "orbitSpeed": 0.00625 }
+      ],
+      "station": { "name": "Lyra Academy", "orbitRadius": 4800, "orbitSpeed": 0.00109375 },
+      "economy": {
+        "production": { "nd": 20, "li": 50, "ag": 30, "au": 20, "pt": 15, "he3": 25 },
+        "demand": { "h": 1.0, "fe": 1.5, "cu": 1.2, "al": 1.2, "ti": 1.5, "si": 1.0, "li": 1.5, "ag": 1.5, "au": 1.5, "pt": 1.2, "nd": 2.0, "he3": 1.0 }
+      }
+    },
+    {
+      "id": "spica",
+      "name": "Spica",
+      "x": -1000,
+      "y": 2000,
+      "radius": 44,
+      "color": "AADDFF",
+      "description": "A blue giant in Virgo. Spica's orbital shipyards produce some of the finest frigates in the fleet.",
+      "connections": ["tribune", "lyra", "polaris"],
+      "services": ["fuel", "repair", "market"],
+      "hostility": 2,
+      "faction": "Terran Federation",
+      "starRadius": 1050,
+      "planets": [
+        { "name": "Spica I", "orbitRadius": 8100, "radius": 1350, "color": "88BBDD", "orbitSpeed": 0.008125 }
+      ],
+      "station": { "name": "Spica Shipyard", "orbitRadius": 4600, "orbitSpeed": 0.00109375 },
+      "economy": {
+        "production": { "fe": 110, "cu": 80, "al": 90, "ti": 100, "si": 80, "c": 100, "h": 40 },
+        "demand": { "h": 1.0, "fe": 1.5, "cu": 1.5, "al": 1.5, "ti": 2.0, "si": 1.2, "li": 1.0, "u": 0.8, "nd": 0.8, "ag": 0.8 }
+      }
+    },
+    {
+      "id": "polaris",
+      "name": "Polaris",
+      "x": -3000,
+      "y": 2000,
+      "radius": 32,
+      "color": "EEDDFF",
+      "description": "The North Star. A remote navigation beacon with little more than a refueling depot for deep-space travelers.",
+      "connections": ["spica", "arcturus", "pleione"],
+      "services": ["fuel"],
+      "hostility": 3,
+      "faction": "Independent",
+      "starRadius": 750,
+      "planets": [],
+      "station": null,
+      "economy": {
+        "production": { "h": 80, "he3": 25, "u": 15 },
+        "demand": { "h": 2.0, "he3": 1.5, "fe": 1.8, "cu": 1.5, "al": 1.5, "ti": 1.5, "si": 1.5, "c": 1.8, "u": 1.0 }
+      }
+    },
+    {
+      "id": "arcturus",
+      "name": "Arcturus",
+      "x": -3500,
+      "y": 1000,
+      "radius": 52,
+      "color": "FFCC44",
+      "description": "An orange giant and the jewel of the Free Worlds. Arcturus Prime is a center of art and diplomacy.",
+      "connections": ["polaris", "tribune", "taygeta", "electra"],
+      "services": ["fuel", "repair", "market", "upgrades"],
+      "hostility": 0,
+      "faction": "Free Worlds Alliance",
+      "starRadius": 1150,
+      "planets": [
+        { "name": "Arcturus I", "orbitRadius": 9000, "radius": 1530, "color": "DDBB66", "orbitSpeed": 0.009375 },
+        { "name": "Arcturus II", "orbitRadius": 14400, "radius": 1260, "color": "CCAA55", "orbitSpeed": 0.00625 },
+        { "name": "Arcturus III", "orbitRadius": 19200, "radius": 810, "color": "BB9933", "orbitSpeed": 0.00375 }
+      ],
+      "station": { "name": "Arcturus Prime Station", "orbitRadius": 5600, "orbitSpeed": 0.00078125 },
+      "economy": {
+        "production": { "nd": 20, "li": 40, "ag": 35, "au": 25, "pt": 15, "he3": 30, "si": 80, "c": 100 },
+        "demand": { "h": 1.0, "fe": 1.0, "cu": 1.0, "al": 0.8, "ti": 0.8, "si": 0.8, "li": 1.8, "ag": 2.5, "au": 2.5, "pt": 2.0, "nd": 2.5, "he3": 1.2 }
+      }
+    },
+    {
+      "id": "aldebaran",
+      "name": "Aldebaran",
+      "x": -2000,
+      "y": -1200,
+      "radius": 34,
+      "color": "FF8844",
+      "description": "The red eye of the Bull. An ungoverned system where pirates and smugglers trade freely.",
+      "connections": ["barnard", "tribune", "maia", "fomalhaut"],
+      "services": ["fuel"],
+      "hostility": 4,
+      "faction": "Independent",
+      "starRadius": 850,
+      "planets": [],
+      "station": null,
+      "economy": {
+        "production": { "u": 35, "he3": 25, "h": 50, "fe": 40, "ag": 15 },
+        "demand": { "h": 2.0, "he3": 1.5, "fe": 1.8, "cu": 1.5, "al": 1.5, "ti": 1.5, "c": 1.8, "si": 1.5, "u": 1.5, "ag": 0.3, "au": 0.3, "pt": 0.3 }
+      }
+    },
+    {
+      "id": "pleione",
+      "name": "Pleione",
+      "x": -4000,
+      "y": 2500,
+      "radius": 22,
+      "color": "CCDDFF",
+      "description": "A blue star in the Pleiades cluster, this system is largely unexplored save for a few automated beacons.",
+      "connections": ["polaris", "celaeno", "electra"],
+      "services": ["fuel"],
+      "hostility": 2,
+      "faction": "Independent",
+      "starRadius": 550,
+      "planets": [],
+      "station": null,
+      "economy": {
+        "production": { "h": 50, "he3": 20 },
+        "demand": { "h": 1.8, "he3": 1.2, "fe": 1.5, "cu": 1.3, "al": 1.3, "ti": 1.2, "c": 1.5, "si": 1.3 }
+      }
+    },
+    {
+      "id": "electra",
+      "name": "Electra",
+      "x": -5000,
+      "y": 500,
+      "radius": 36,
+      "color": "DDBBFF",
+      "description": "One of the brighter Pleiades, Electra hosts a Free Worlds listening post and a small trading community.",
+      "connections": ["arcturus", "celaeno", "atlas", "pleione"],
+      "services": ["fuel", "repair", "market"],
+      "hostility": 1,
+      "faction": "Free Worlds Alliance",
+      "starRadius": 850,
+      "planets": [
+        { "name": "Electra I", "orbitRadius": 7200, "radius": 1170, "color": "CC99DD", "orbitSpeed": 0.00875 },
+        { "name": "Electra II", "orbitRadius": 11400, "radius": 855, "color": "BB88CC", "orbitSpeed": 0.005625 }
+      ],
+      "station": { "name": "Electra Post", "orbitRadius": 4400, "orbitSpeed": 0.00109375 },
+      "economy": {
+        "production": { "nd": 10, "li": 25, "ag": 15, "au": 10, "he3": 15 },
+        "demand": { "h": 1.0, "fe": 1.0, "cu": 0.8, "al": 0.8, "ti": 0.8, "si": 0.8, "li": 1.0, "ag": 1.2, "au": 1.0, "nd": 1.2 }
+      }
+    },
+    {
+      "id": "atlas",
+      "name": "Atlas",
+      "x": -4500,
+      "y": -500,
+      "radius": 40,
+      "color": "FFCC66",
+      "description": "A massive yellow giant in the Pleiades. Atlas Station serves as a trading nexus for the outer systems.",
+      "connections": ["electra", "merope", "maia"],
+      "services": ["fuel", "repair", "market"],
+      "hostility": 3,
+      "faction": "Terran Federation",
+      "starRadius": 1000,
+      "planets": [
+        { "name": "Atlas I", "orbitRadius": 6600, "radius": 1080, "color": "EEBB55", "orbitSpeed": 0.008125 }
+      ],
+      "station": { "name": "Atlas Trading Post", "orbitRadius": 4200, "orbitSpeed": 0.00125 },
+      "economy": {
+        "production": { "fe": 70, "cu": 50, "al": 60, "ti": 40, "si": 80, "c": 100, "h": 40 },
+        "demand": { "h": 1.5, "fe": 1.3, "cu": 1.3, "al": 1.3, "ti": 1.0, "si": 1.3, "c": 1.0, "li": 1.0, "ag": 1.0, "au": 0.8 }
+      }
+    },
+    {
+      "id": "maia",
+      "name": "Maia",
+      "x": -3200,
+      "y": -800,
+      "radius": 38,
+      "color": "AABBDD",
+      "description": "A blue-white star in the Pleiades cluster. Maia's terraformed world is a Federation showcase project.",
+      "connections": ["atlas", "aldebaran", "taygeta", "asterope"],
+      "services": ["fuel", "repair", "market"],
+      "hostility": 1,
+      "faction": "Terran Federation",
+      "starRadius": 900,
+      "planets": [
+        { "name": "Maia I", "orbitRadius": 7800, "radius": 1305, "color": "99AACC", "orbitSpeed": 0.00875 },
+        { "name": "Maia II", "orbitRadius": 12600, "radius": 990, "color": "8899BB", "orbitSpeed": 0.005625 }
+      ],
+      "station": { "name": "Maia Hub", "orbitRadius": 4600, "orbitSpeed": 0.00109375 },
+      "economy": {
+        "production": { "fe": 80, "cu": 50, "al": 60, "ti": 40, "si": 100, "c": 150, "h": 50 },
+        "demand": { "h": 1.0, "fe": 1.2, "cu": 1.0, "al": 1.0, "ti": 0.8, "si": 1.0, "li": 0.8, "ag": 1.2, "au": 1.0, "nd": 0.8 }
+      }
+    },
+    {
+      "id": "celaeno",
+      "name": "Celaeno",
+      "x": -4800,
+      "y": 1500,
+      "radius": 24,
+      "color": "BBDDFF",
+      "description": "A faint Pleiades member. Celaeno's system is a haven for pirates preying on the Electra-Atlas trade route.",
+      "connections": ["pleione", "electra", "taygeta"],
+      "services": ["fuel"],
+      "hostility": 4,
+      "faction": "Independent",
+      "starRadius": 600,
+      "planets": [],
+      "station": null,
+      "economy": {
+        "production": { "u": 30, "he3": 20, "h": 40, "fe": 30, "ag": 10 },
+        "demand": { "h": 2.0, "he3": 1.5, "fe": 1.8, "cu": 1.5, "al": 1.5, "ti": 1.5, "c": 2.0, "si": 1.8, "u": 1.5, "ag": 0.3, "au": 0.3 }
+      }
+    },
+    {
+      "id": "taygeta",
+      "name": "Taygeta",
+      "x": -3800,
+      "y": 200,
+      "radius": 42,
+      "color": "CCDDFF",
+      "description": "A bright blue-white star in the Pleiades. The Free Worlds maintain a scientific outpost here.",
+      "connections": ["arcturus", "maia", "celaeno"],
+      "services": ["fuel", "repair", "market", "upgrades"],
+      "hostility": 0,
+      "faction": "Free Worlds Alliance",
+      "starRadius": 950,
+      "planets": [
+        { "name": "Taygeta I", "orbitRadius": 8400, "radius": 1440, "color": "BBDDEE", "orbitSpeed": 0.009375 },
+        { "name": "Taygeta II", "orbitRadius": 13200, "radius": 1080, "color": "AACCDD", "orbitSpeed": 0.00625 },
+        { "name": "Taygeta III", "orbitRadius": 18000, "radius": 720, "color": "99BBCC", "orbitSpeed": 0.004375 }
+      ],
+      "station": { "name": "Taygeta Research Station", "orbitRadius": 5000, "orbitSpeed": 0.0009375 },
+      "economy": {
+        "production": { "nd": 25, "li": 50, "ag": 30, "au": 20, "pt": 15, "he3": 35, "si": 100 },
+        "demand": { "h": 1.0, "fe": 1.0, "cu": 1.0, "al": 0.8, "ti": 0.8, "si": 1.2, "li": 2.0, "ag": 2.0, "au": 2.0, "pt": 2.0, "nd": 2.5, "he3": 1.5 }
+      }
+    },
+    {
+      "id": "asterope",
+      "name": "Asterope",
+      "x": -3500,
+      "y": -2000,
+      "radius": 20,
+      "color": "DDCCEE",
+      "description": "A dim star on the outermost edge of explored space. No law, no services, no hope.",
+      "connections": ["maia", "merope", "corvus"],
+      "services": [],
+      "hostility": 5,
+      "faction": "Independent",
+      "starRadius": 400,
+      "planets": [],
+      "station": null,
+      "economy": {
+        "production": { "u": 20, "he3": 10, "h": 30 },
+        "demand": { "h": 2.5, "he3": 2.0, "fe": 2.0, "cu": 2.0, "al": 2.0, "ti": 2.0, "c": 2.5, "si": 2.5, "u": 1.5 }
+      }
+    },
+    {
+      "id": "merope",
+      "name": "Merope",
+      "x": -4200,
+      "y": -1500,
+      "radius": 28,
+      "color": "CCBBCC",
+      "description": "A hazy star obscured by nebular dust. Only the desperate or foolish travel this route without escort.",
+      "connections": ["atlas", "asterope"],
+      "services": ["fuel"],
+      "hostility": 3,
+      "faction": "Independent",
+      "starRadius": 600,
+      "planets": [],
+      "station": null,
+      "economy": {
+        "production": { "u": 20, "he3": 25, "h": 50 },
+        "demand": { "h": 2.0, "he3": 1.5, "fe": 1.8, "cu": 1.5, "al": 1.5, "ti": 1.5, "c": 1.8, "si": 1.5, "u": 1.2 }
+      }
+    },
+    {
+      "id": "aquila",
+      "name": "Aquila",
+      "x": -500,
+      "y": -2000,
+      "radius": 35,
+      "color": "FFDD77",
+      "description": "The Eagle. A Federation mining operation extracts heavy metals from Aquila's dense asteroid belt.",
+      "connections": ["barnard", "regulus", "corvus"],
+      "services": ["fuel", "repair", "market"],
+      "hostility": 2,
+      "faction": "Terran Federation",
+      "starRadius": 800,
+      "planets": [
+        { "name": "Aquila I", "orbitRadius": 6000, "radius": 990, "color": "CCBB66", "orbitSpeed": 0.008125 }
+      ],
+      "station": { "name": "Aquila Mines", "orbitRadius": 3800, "orbitSpeed": 0.00140625 },
+      "economy": {
+        "production": { "fe": 150, "cu": 100, "al": 80, "ti": 60, "u": 20, "si": 60, "c": 80 },
+        "demand": { "h": 1.2, "fe": 0.8, "cu": 0.8, "al": 0.8, "ti": 0.8, "si": 0.8, "c": 0.8, "u": 0.5, "li": 0.5, "ag": 0.5 }
+      }
+    },
+    {
+      "id": "corvus",
+      "name": "Corvus",
+      "x": -1800,
+      "y": -2500,
+      "radius": 22,
+      "color": "888899",
+      "description": "The Crow. A dead system of dark rocks and silence. Navigational charts warn all pilots away.",
+      "connections": ["asterope", "aquila"],
+      "services": [],
+      "hostility": 5,
+      "faction": "Independent",
+      "starRadius": 450,
+      "planets": [],
+      "station": null,
+      "economy": {
+        "production": { "u": 10, "he3": 5, "h": 15 },
+        "demand": { "h": 3.0, "he3": 2.0, "fe": 2.5, "cu": 2.5, "al": 2.5, "ti": 2.5, "c": 3.0, "si": 3.0, "u": 2.0 }
+      }
+    },
+    {
+      "id": "rigel",
+      "name": "Rigel",
+      "x": 5000,
+      "y": 800,
+      "radius": 55,
+      "color": "AADDFF",
+      "description": "A blue supergiant in Orion. Rigel's massive starports make it a cornerstone of Federation trade.",
+      "connections": ["vega", "draco", "betelgeuse", "deneb", "orion"],
+      "services": ["fuel", "repair", "market", "upgrades"],
+      "hostility": 1,
+      "faction": "Terran Federation",
+      "starRadius": 1200,
+      "planets": [
+        { "name": "Rigel I", "orbitRadius": 9600, "radius": 1620, "color": "88BBDD", "orbitSpeed": 0.009375 },
+        { "name": "Rigel II", "orbitRadius": 15000, "radius": 1260, "color": "77AACC", "orbitSpeed": 0.00625 },
+        { "name": "Rigel III", "orbitRadius": 20400, "radius": 900, "color": "6699BB", "orbitSpeed": 0.003125 }
+      ],
+      "station": { "name": "Rigel Prime Station", "orbitRadius": 6000, "orbitSpeed": 0.000625 },
+      "economy": {
+        "production": { "fe": 130, "cu": 90, "al": 100, "ti": 70, "si": 160, "c": 220, "h": 90 },
+        "demand": { "h": 1.5, "he3": 1.0, "fe": 1.5, "cu": 1.5, "al": 1.5, "ti": 1.3, "si": 1.5, "li": 1.5, "ag": 2.0, "pt": 1.5, "au": 2.0, "nd": 1.5 }
+      }
+    },
+    {
+      "id": "betelgeuse",
+      "name": "Betelgeuse",
+      "x": 4500,
+      "y": -600,
+      "radius": 46,
+      "color": "FF6644",
+      "description": "A red supergiant on the verge of going supernova. The Alliance maintains a watch post here.",
+      "connections": ["sirius", "rigel", "castor", "pollux"],
+      "services": ["fuel", "repair", "market"],
+      "hostility": 3,
+      "faction": "Free Worlds Alliance",
+      "starRadius": 1150,
+      "planets": [
+        { "name": "Betelgeuse I", "orbitRadius": 7800, "radius": 1080, "color": "EE7744", "orbitSpeed": 0.00875 },
+        { "name": "Betelgeuse II", "orbitRadius": 13800, "radius": 765, "color": "DD6633", "orbitSpeed": 0.005625 }
+      ],
+      "station": { "name": "Betelgeuse Observatory", "orbitRadius": 5000, "orbitSpeed": 0.00109375 },
+      "economy": {
+        "production": { "nd": 15, "li": 30, "ag": 20, "au": 10, "he3": 25, "fe": 40 },
+        "demand": { "h": 1.5, "he3": 1.2, "fe": 1.5, "cu": 1.3, "al": 1.3, "ti": 1.5, "si": 1.3, "c": 1.3, "u": 1.0, "nd": 1.0, "ag": 1.0 }
+      }
+    },
+    {
+      "id": "deneb",
+      "name": "Deneb",
+      "x": 5000,
+      "y": 2000,
+      "radius": 48,
+      "color": "CCEEFF",
+      "description": "A brilliant white supergiant in Cygnus. Deneb's system is a popular waypoint for travelers heading coreward.",
+      "connections": ["rigel", "cygnus", "taurus", "orion", "antares"],
+      "services": ["fuel", "repair", "market"],
+      "hostility": 1,
+      "faction": "Free Worlds Alliance",
+      "starRadius": 1100,
+      "planets": [
+        { "name": "Deneb I", "orbitRadius": 8400, "radius": 1350, "color": "AADDFF", "orbitSpeed": 0.009375 },
+        { "name": "Deneb II", "orbitRadius": 13200, "radius": 990, "color": "99CCEE", "orbitSpeed": 0.005625 }
+      ],
+      "station": { "name": "Deneb Waypoint", "orbitRadius": 5200, "orbitSpeed": 0.0009375 },
+      "economy": {
+        "production": { "nd": 10, "li": 20, "ag": 15, "au": 10, "he3": 20, "si": 60, "c": 80 },
+        "demand": { "h": 1.3, "fe": 1.2, "cu": 1.0, "al": 1.0, "ti": 0.8, "si": 1.0, "li": 1.0, "ag": 1.2, "au": 1.0, "nd": 1.0 }
+      }
+    },
+    {
+      "id": "pollux",
+      "name": "Pollux",
+      "x": 6000,
+      "y": -800,
+      "radius": 50,
+      "color": "FFCC44",
+      "description": "A yellow giant in Gemini. Pollux is a prosperous Federation system known for its universities.",
+      "connections": ["betelgeuse", "castor", "gemini"],
+      "services": ["fuel", "repair", "market", "upgrades"],
+      "hostility": 0,
+      "faction": "Terran Federation",
+      "starRadius": 1080,
+      "planets": [
+        { "name": "Pollux I", "orbitRadius": 8400, "radius": 1440, "color": "DDBB55", "orbitSpeed": 0.009375 },
+        { "name": "Pollux II", "orbitRadius": 13200, "radius": 1170, "color": "CCAA44", "orbitSpeed": 0.00625 },
+        { "name": "Pollux III", "orbitRadius": 18600, "radius": 810, "color": "BB9933", "orbitSpeed": 0.004375 }
+      ],
+      "station": { "name": "Pollux Academy", "orbitRadius": 5400, "orbitSpeed": 0.0009375 },
+      "economy": {
+        "production": { "fe": 90, "cu": 60, "al": 70, "ti": 50, "si": 120, "c": 160, "h": 60, "nd": 10, "li": 30 },
+        "demand": { "h": 1.0, "fe": 1.2, "cu": 1.0, "al": 1.0, "ti": 0.8, "si": 1.2, "li": 1.5, "ag": 1.5, "au": 1.5, "pt": 1.2, "nd": 1.8 }
+      }
+    },
+    {
+      "id": "castor",
+      "name": "Castor",
+      "x": 5500,
+      "y": -200,
+      "radius": 42,
+      "color": "CCDDEE",
+      "description": "A white binary star in Gemini. Castor's orbital markets are famous for exotic goods from beyond the frontier.",
+      "connections": ["betelgeuse", "pollux", "gemini"],
+      "services": ["fuel", "repair", "market"],
+      "hostility": 1,
+      "faction": "Terran Federation",
+      "starRadius": 950,
+      "planets": [
+        { "name": "Castor I", "orbitRadius": 7200, "radius": 1260, "color": "AABBCC", "orbitSpeed": 0.008125 },
+        { "name": "Castor II", "orbitRadius": 12000, "radius": 900, "color": "99AABB", "orbitSpeed": 0.005625 }
+      ],
+      "station": { "name": "Castor Exchange", "orbitRadius": 4400, "orbitSpeed": 0.00109375 },
+      "economy": {
+        "production": { "fe": 70, "cu": 50, "al": 60, "ti": 40, "si": 90, "c": 120, "h": 50, "ag": 15, "au": 10 },
+        "demand": { "h": 1.2, "fe": 1.3, "cu": 1.2, "al": 1.2, "ti": 1.0, "si": 1.2, "li": 1.2, "ag": 1.8, "au": 2.0, "pt": 1.5, "nd": 1.5 }
+      }
+    },
+    {
+      "id": "orion",
+      "name": "Orion",
+      "x": 6500,
+      "y": 500,
+      "radius": 52,
+      "color": "AABBDD",
+      "description": "The Hunter. Orion's central station coordinates Free Worlds defense across the eastern arm.",
+      "connections": ["rigel", "deneb", "taurus", "gemini"],
+      "services": ["fuel", "repair", "market", "upgrades"],
+      "hostility": 2,
+      "faction": "Free Worlds Alliance",
+      "starRadius": 1050,
+      "planets": [
+        { "name": "Orion I", "orbitRadius": 7800, "radius": 1395, "color": "99AACC", "orbitSpeed": 0.00875 },
+        { "name": "Orion II", "orbitRadius": 12600, "radius": 1080, "color": "8899BB", "orbitSpeed": 0.005625 }
+      ],
+      "station": { "name": "Orion Defense HQ", "orbitRadius": 5600, "orbitSpeed": 0.0009375 },
+      "economy": {
+        "production": { "nd": 15, "li": 35, "ag": 20, "au": 15, "pt": 10, "he3": 30, "fe": 50, "cu": 30, "al": 40 },
+        "demand": { "h": 1.2, "fe": 1.5, "cu": 1.3, "al": 1.3, "ti": 1.5, "si": 1.2, "u": 1.2, "li": 1.5, "ag": 1.2, "au": 1.0, "nd": 1.5 }
+      }
+    },
+    {
+      "id": "taurus",
+      "name": "Taurus",
+      "x": 5500,
+      "y": 1500,
+      "radius": 36,
+      "color": "FFCC77",
+      "description": "The Bull. A quiet Federation agricultural system supplying food to the eastern colonies.",
+      "connections": ["deneb", "orion"],
+      "services": ["fuel", "market"],
+      "hostility": 1,
+      "faction": "Terran Federation",
+      "starRadius": 800,
+      "planets": [
+        { "name": "Taurus I", "orbitRadius": 6600, "radius": 1080, "color": "CCBB55", "orbitSpeed": 0.008125 }
+      ],
+      "station": { "name": "Taurus Agro Station", "orbitRadius": 4000, "orbitSpeed": 0.00125 },
+      "economy": {
+        "production": { "c": 200, "si": 80, "h": 50, "fe": 30, "cu": 20, "al": 20 },
+        "demand": { "h": 1.0, "fe": 1.2, "cu": 1.0, "al": 1.0, "ti": 0.8, "si": 0.8, "li": 0.5, "ag": 0.8, "au": 0.5 }
+      }
+    },
+    {
+      "id": "gemini",
+      "name": "Gemini",
+      "x": 6200,
+      "y": -300,
+      "radius": 44,
+      "color": "DDBBEE",
+      "description": "The Twins. A bustling Free Worlds system where twin planets orbit a shared center of gravity.",
+      "connections": ["pollux", "castor", "orion"],
+      "services": ["fuel", "repair", "market"],
+      "hostility": 2,
+      "faction": "Free Worlds Alliance",
+      "starRadius": 980,
+      "planets": [
+        { "name": "Gemini I", "orbitRadius": 8400, "radius": 1260, "color": "CC99DD", "orbitSpeed": 0.00875 },
+        { "name": "Gemini II", "orbitRadius": 13800, "radius": 990, "color": "BB88CC", "orbitSpeed": 0.005625 }
+      ],
+      "station": { "name": "Gemini Station", "orbitRadius": 5000, "orbitSpeed": 0.00109375 },
+      "economy": {
+        "production": { "nd": 12, "li": 30, "ag": 20, "au": 12, "he3": 25, "fe": 40, "cu": 30, "al": 30 },
+        "demand": { "h": 1.2, "fe": 1.3, "cu": 1.2, "al": 1.2, "ti": 1.0, "si": 1.0, "li": 1.2, "ag": 1.3, "au": 1.2, "nd": 1.3 }
+      }
+    },
+    {
+      "id": "leo",
+      "name": "Leo",
+      "x": 2000,
+      "y": -1800,
+      "radius": 45,
+      "color": "FFDD66",
+      "description": "The Lion. A proud Federation system with a rich history and a powerful defense fleet.",
+      "connections": ["capella", "regulus"],
+      "services": ["fuel", "repair", "market", "upgrades"],
+      "hostility": 0,
+      "faction": "Terran Federation",
+      "starRadius": 1000,
+      "planets": [
+        { "name": "Leo I", "orbitRadius": 7200, "radius": 1440, "color": "EECC66", "orbitSpeed": 0.009375 },
+        { "name": "Leo II", "orbitRadius": 12000, "radius": 1125, "color": "DDBB55", "orbitSpeed": 0.00625 },
+        { "name": "Leo III", "orbitRadius": 16800, "radius": 765, "color": "CCAA44", "orbitSpeed": 0.004375 }
+      ],
+      "station": { "name": "Leo Prime Station", "orbitRadius": 5200, "orbitSpeed": 0.0009375 },
+      "economy": {
+        "production": { "fe": 100, "cu": 70, "al": 80, "ti": 60, "si": 130, "c": 170, "h": 70 },
+        "demand": { "h": 1.0, "fe": 1.5, "cu": 1.3, "al": 1.3, "ti": 1.5, "si": 1.2, "li": 1.2, "ag": 1.5, "au": 1.3, "pt": 1.2, "nd": 1.3 }
+      }
+    },
+    {
+      "id": "antares",
+      "name": "Antares",
+      "x": 3500,
+      "y": 2000,
+      "radius": 40,
+      "color": "FF5533",
+      "description": "The rival of Mars. This fiery red supergiant system is lawless and dangerous, home to outlaw clans.",
+      "connections": ["draco", "deneb"],
+      "services": ["fuel"],
+      "hostility": 4,
+      "faction": "Independent",
+      "starRadius": 950,
+      "planets": [
+        { "name": "Antares I", "orbitRadius": 6600, "radius": 990, "color": "EE4422", "orbitSpeed": 0.008125 }
+      ],
+      "station": null,
+      "economy": {
+        "production": { "u": 35, "he3": 30, "h": 60, "fe": 50, "al": 30, "ti": 20 },
+        "demand": { "h": 2.0, "he3": 1.5, "fe": 1.8, "cu": 1.5, "al": 1.5, "ti": 1.8, "c": 2.0, "si": 1.8, "u": 1.5, "ag": 0.3, "au": 0.3 }
+      }
     }
   ]
 }

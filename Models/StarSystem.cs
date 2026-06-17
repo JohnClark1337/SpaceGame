@@ -18,6 +18,12 @@ public class StationData
     public float Radius { get; set; } = 40f;
 }
 
+public class EconomyData
+{
+    public Dictionary<string, float> Production { get; set; } = new();
+    public Dictionary<string, float> Demand { get; set; } = new();
+}
+
 public class StarSystemData
 {
     public string Id { get; set; } = "";
@@ -34,6 +40,7 @@ public class StarSystemData
     public float StarRadius { get; set; } = 80f;
     public List<PlanetData> Planets { get; set; } = new();
     public StationData? Station { get; set; }
+    public EconomyData? Economy { get; set; }
 }
 
 public class SystemsData

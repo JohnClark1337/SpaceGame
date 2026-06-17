@@ -1,60 +1,18 @@
 {
   "resources": [
-    {
-      "id": "food_rations",
-      "name": "Food Rations",
-      "description": "Basic sustenance for long journeys",
-      "basePrice": 5,
-      "volume": 1
-    },
-    {
-      "id": "scrap_metal",
-      "name": "Scrap Metal",
-      "description": "Recycled hull plating and structural beams",
-      "basePrice": 8,
-      "volume": 2
-    },
-    {
-      "id": "electronics",
-      "name": "Electronics",
-      "description": "Circuit boards and navigation chips",
-      "basePrice": 25,
-      "volume": 1
-    },
-    {
-      "id": "fuel_cells",
-      "name": "Fuel Cells",
-      "description": "Standard hydrogen fuel cells",
-      "basePrice": 15,
-      "volume": 2
-    },
-    {
-      "id": "medical_supplies",
-      "name": "Medical Supplies",
-      "description": "First aid kits and pharmaceuticals",
-      "basePrice": 30,
-      "volume": 1
-    },
-    {
-      "id": "luxury_goods",
-      "name": "Luxury Goods",
-      "description": "High-end consumer products from core worlds",
-      "basePrice": 100,
-      "volume": 3
-    },
-    {
-      "id": "raw_minerals",
-      "name": "Raw Minerals",
-      "description": "Unrefined ore and mineral deposits",
-      "basePrice": 12,
-      "volume": 3
-    },
-    {
-      "id": "weapon_parts",
-      "name": "Weapon Parts",
-      "description": "Components for ship-mounted weaponry",
-      "basePrice": 45,
-      "volume": 2
-    }
+    { "id": "h", "name": "Hydrogen", "symbol": "H", "category": "fuel", "description": "The most abundant element. Primary fuel for fusion reactors.", "basePrice": 4, "volume": 2 },
+    { "id": "he3", "name": "Helium-3", "symbol": "He-3", "category": "fuel", "description": "A rare isotope used in advanced fusion drives.", "basePrice": 35, "volume": 1 },
+    { "id": "c", "name": "Carbon", "symbol": "C", "category": "common", "description": "Allotrope-rich element used in composites and manufacturing.", "basePrice": 3, "volume": 3 },
+    { "id": "si", "name": "Silicon", "symbol": "Si", "category": "common", "description": "Essential for computer chips and solar panels.", "basePrice": 10, "volume": 2 },
+    { "id": "fe", "name": "Iron", "symbol": "Fe", "category": "metal", "description": "The backbone of starship hull construction.", "basePrice": 6, "volume": 3 },
+    { "id": "cu", "name": "Copper", "symbol": "Cu", "category": "metal", "description": "High-conductivity metal for wiring and power systems.", "basePrice": 12, "volume": 2 },
+    { "id": "al", "name": "Aluminum", "symbol": "Al", "category": "metal", "description": "Lightweight structural metal for ship frames.", "basePrice": 8, "volume": 3 },
+    { "id": "ti", "name": "Titanium", "symbol": "Ti", "category": "metal", "description": "High-strength alloy component for armor plating.", "basePrice": 22, "volume": 2 },
+    { "id": "li", "name": "Lithium", "symbol": "Li", "category": "industrial", "description": "Critical for high-capacity battery manufacturing.", "basePrice": 18, "volume": 1 },
+    { "id": "u", "name": "Uranium", "symbol": "U", "category": "fuel", "description": "Fissile material for older reactor designs and munitions.", "basePrice": 45, "volume": 1 },
+    { "id": "ag", "name": "Silver", "symbol": "Ag", "category": "precious", "description": "Precious metal used in advanced circuitry and optics.", "basePrice": 60, "volume": 1 },
+    { "id": "pt", "name": "Platinum", "symbol": "Pt", "category": "precious", "description": "Rare catalyst metal with high industrial demand.", "basePrice": 120, "volume": 1 },
+    { "id": "au", "name": "Gold", "symbol": "Au", "category": "precious", "description": "Corrosion-resistant precious metal for critical electronics.", "basePrice": 90, "volume": 1 },
+    { "id": "nd", "name": "Neodymium", "symbol": "Nd", "category": "rare", "description": "Rare-earth element essential for powerful magnets.", "basePrice": 75, "volume": 1 }
   ]
 }
