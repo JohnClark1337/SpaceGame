@@ -45,6 +45,10 @@ public class SystemScene
     private Body _lifepod;
     private bool _lifepodActive;
 
+    private bool _trainingPaused;
+    private int _trainingMenuSelection;
+    private bool _showEnemyList;
+
     private struct ExplosionDebris
     {
         public Vector2 Start;
@@ -60,7 +64,45 @@ public class SystemScene
     private bool _particlesInitialized;
     private Vector2 _waypointPosition;
 
+    private struct Bullet
+    {
+        public Vector2 Position;
+        public Vector2 Velocity;
+        public float Lifetime;
+        public bool IsPlayerBullet;
+    }
+    private List<Bullet> _bullets = new();
+    private float _playerShootCooldown;
+    private const float PLAYER_SHOOT_COOLDOWN = 0.25f;
+    private const float BULLET_SPEED = 500f;
+    private const float BULLET_LIFETIME = 1.5f;
+
+    private enum AiState { Idle, Orbit, Attack, Evade }
+    private struct EnemyShip
+    {
+        public Vector2 Position;
+        public Vector2 Velocity;
+        public float Angle;
+        public float Health;
+        public float MaxHealth;
+        public string Type;
+        public float ShootCooldown;
+        public AiState AiState;
+        public float StateTimer;
+        public float OrbitAngle;
+    }
+    private List<EnemyShip> _enemies = new();
+
+    private struct EnemyExplosion
+    {
+        public Vector2 Position;
+        public float Timer;
+        public float Duration;
+    }
+    private List<EnemyExplosion> _enemyExplosions = new();
+
     public bool Docked => _docked;
+    public bool TrainingMode { get; set; }
     public StarSystemData? CurrentSystem => _system;
     public string StationName => _station.Name;
 
@@ -145,11 +187,17 @@ public class SystemScene
         _nearEdge = false;
         _nearPlanet = false;
         _lifepodActive = false;
+        _bullets.Clear();
+        _enemies.Clear();
+        _enemyExplosions.Clear();
 
-        float spawnAngle = RandF() * MathF.Tau;
+        // Spawn near a corner of the map to avoid planets and star
+        float cornerDist = _systemRadius * 0.85f;
+        float[] cornerAngles = { MathF.PI / 4f, 3f * MathF.PI / 4f, 5f * MathF.PI / 4f, 7f * MathF.PI / 4f };
+        float spawnAngle = cornerAngles[Random.Shared.Next(4)];
         _player.Position = new Vector2(
-            MathF.Cos(spawnAngle) * _spawnRadius,
-            MathF.Sin(spawnAngle) * _spawnRadius);
+            MathF.Cos(spawnAngle) * cornerDist,
+            MathF.Sin(spawnAngle) * cornerDist);
         _player.Velocity = Vector2.Zero;
         _player.Angle = spawnAngle + MathF.PI;
 
@@ -182,7 +230,11 @@ public class SystemScene
 
         if (_gameOver)
         {
-            if (JustPressed(keyboard, Keys.Enter))
+            if (TrainingMode)
+            {
+                Respawn();
+            }
+            else if (JustPressed(keyboard, Keys.Enter))
             {
                 _gameOver = false;
                 _game.ShowNewGameMenu();
@@ -208,7 +260,10 @@ public class SystemScene
             if (_explosionTimer > 2.5f)
             {
                 _exploding = false;
-                _gameOver = true;
+                if (TrainingMode)
+                    Respawn();
+                else
+                    _gameOver = true;
             }
             return;
         }
@@ -230,6 +285,57 @@ public class SystemScene
                 _station.X = MathF.Cos(_station.CurrentAngle) * _station.OrbitRadius;
                 _station.Y = MathF.Sin(_station.CurrentAngle) * _station.OrbitRadius;
                 _waypointPosition = new Vector2(_station.X, _station.Y);
+            }
+
+            // Training mode input (F1, ESC pause) — intercepts normal update
+            if (TrainingMode)
+            {
+                bool esc = keyboard.IsKeyDown(Keys.Escape) && _prevKeyboard.IsKeyUp(Keys.Escape);
+                bool f1 = keyboard.IsKeyDown(Keys.F1) && _prevKeyboard.IsKeyUp(Keys.F1);
+                bool down = (keyboard.IsKeyDown(Keys.Down) && _prevKeyboard.IsKeyUp(Keys.Down)) ||
+                            (keyboard.IsKeyDown(Keys.S) && _prevKeyboard.IsKeyUp(Keys.S));
+                bool up = (keyboard.IsKeyDown(Keys.Up) && _prevKeyboard.IsKeyUp(Keys.Up)) ||
+                          (keyboard.IsKeyDown(Keys.W) && _prevKeyboard.IsKeyUp(Keys.W));
+                bool enter = keyboard.IsKeyDown(Keys.Enter) && _prevKeyboard.IsKeyUp(Keys.Enter);
+
+                if (esc)
+                {
+                    if (_showEnemyList)
+                        _showEnemyList = false;
+                    else
+                    {
+                        _trainingPaused = !_trainingPaused;
+                        _trainingMenuSelection = 0;
+                    }
+                }
+                if (f1)
+                    _showEnemyList = !_showEnemyList;
+
+                if (esc || f1 || _showEnemyList)
+                {
+                    _prevKeyboard = keyboard;
+                    return;
+                }
+
+                if (_trainingPaused)
+                {
+                    if (down)
+                        _trainingMenuSelection++;
+                    if (up)
+                        _trainingMenuSelection--;
+                    int max2 = 1;
+                    if (_trainingMenuSelection < 0) _trainingMenuSelection = max2;
+                    if (_trainingMenuSelection > max2) _trainingMenuSelection = 0;
+                    if (enter)
+                    {
+                        if (_trainingMenuSelection == 0)
+                            _trainingPaused = false;
+                        else if (_trainingMenuSelection == 1)
+                            _game.ExitTraining();
+                    }
+                    _prevKeyboard = keyboard;
+                    return;
+                }
             }
 
             bool w = keyboard.IsKeyDown(Keys.W) || keyboard.IsKeyDown(Keys.Up);
@@ -349,12 +455,134 @@ public class SystemScene
                 _particles[i] = p;
             }
 
-            float distFromCenter = _player.Position.Length();
-            _nearEdge = distFromCenter > _systemRadius * 0.85f;
-            if (distFromCenter > _systemRadius)
+            // --- Combat: player shooting ---
+            if (!_exploding && !_docked)
             {
-                _game.ExitToGalaxy();
-                return;
+                _playerShootCooldown -= dt;
+                if (keyboard.IsKeyDown(Keys.Space) && _playerShootCooldown <= 0f)
+                {
+                    _playerShootCooldown = PLAYER_SHOOT_COOLDOWN;
+                    _bullets.Add(new Bullet
+                    {
+                        Position = _player.Position,
+                        Velocity = Vector2.FromAngle(_player.Angle) * BULLET_SPEED + _player.Velocity * 0.5f,
+                        Lifetime = BULLET_LIFETIME,
+                        IsPlayerBullet = true
+                    });
+                }
+            }
+
+            // Update bullets
+            for (int i = _bullets.Count - 1; i >= 0; i--)
+            {
+                var b = _bullets[i];
+                b.Position += b.Velocity * dt;
+                b.Lifetime -= dt;
+                if (b.Lifetime <= 0f)
+                    _bullets.RemoveAt(i);
+                else
+                    _bullets[i] = b;
+            }
+
+            // Update enemy explosions
+            for (int i = _enemyExplosions.Count - 1; i >= 0; i--)
+            {
+                var ex = _enemyExplosions[i];
+                ex.Timer += dt;
+                if (ex.Timer >= ex.Duration)
+                    _enemyExplosions.RemoveAt(i);
+                else
+                    _enemyExplosions[i] = ex;
+            }
+
+            // Enemy AI
+            for (int i = 0; i < _enemies.Count; i++)
+            {
+                var e = _enemies[i];
+                UpdateEnemyAI(ref e, dt);
+                _enemies[i] = e;
+            }
+
+            // Bullet-enemy collisions
+            for (int i = _bullets.Count - 1; i >= 0; i--)
+            {
+                var b = _bullets[i];
+                if (!b.IsPlayerBullet) continue;
+                bool hit = false;
+                for (int j = _enemies.Count - 1; j >= 0; j--)
+                {
+                    var e = _enemies[j];
+                    if (Vector2.Distance(b.Position, e.Position) < 22f * ZOOM)
+                    {
+                        e.Health -= 1f;
+                        if (e.Health <= 0f)
+                        {
+                            _enemyExplosions.Add(new EnemyExplosion
+                            {
+                                Position = e.Position,
+                                Timer = 0f,
+                                Duration = 0.6f
+                            });
+                            _enemies.RemoveAt(j);
+                        }
+                        else
+                            _enemies[j] = e;
+                        hit = true;
+                        break;
+                    }
+                }
+                if (hit)
+                    _bullets.RemoveAt(i);
+            }
+
+            // Enemy bullet - player collision
+            for (int i = _bullets.Count - 1; i >= 0; i--)
+            {
+                var b = _bullets[i];
+                if (b.IsPlayerBullet) continue;
+                if (Vector2.Distance(b.Position, _player.Position) < 22f * ZOOM)
+                {
+                    _player.Health -= 2;
+                    _bullets.RemoveAt(i);
+                }
+            }
+
+            // Enemy-player collision (ramming) — disabled
+            //for (int i = 0; i < _enemies.Count; i++)
+            //{
+            //    var e = _enemies[i];
+            //    if (Vector2.Distance(e.Position, _player.Position) < 25f * ZOOM)
+            //    {
+            //        _player.Health = 0;
+            //        break;
+            //    }
+            //}
+
+            // Spawn enemies in training mode
+            if (TrainingMode && _enemies.Count == 0 && !_exploding && !_docked)
+                SpawnScouts();
+
+            if (TrainingMode)
+            {
+                float h = _systemRadius;
+                var pos = _player.Position;
+                if (pos.Length() > h)
+                {
+                    pos = pos.Normalized() * h;
+                    _player.Velocity = Vector2.Zero;
+                }
+                _player.Position = pos;
+                _nearEdge = false;
+            }
+            else
+            {
+                float distFromCenter = _player.Position.Length();
+                _nearEdge = distFromCenter > _systemRadius * 0.85f;
+                if (distFromCenter > _systemRadius)
+                {
+                    _game.ExitToGalaxy();
+                    return;
+                }
             }
         }
         else
@@ -363,6 +591,8 @@ public class SystemScene
                 _docked = false;
             _game.Galaxy.CheckQuestProgress(_player);
         }
+
+        _prevKeyboard = keyboard;
     }
 
     private KeyboardState _prevKeyboard;
@@ -480,8 +710,50 @@ public class SystemScene
             }
         }
 
+        // Bullets
+        foreach (var b in _bullets)
+        {
+            float bx = center.X + (b.Position.X - _player.Position.X) * ZOOM;
+            float by = center.Y + (b.Position.Y - _player.Position.Y) * ZOOM;
+            Color bColor = b.IsPlayerBullet ? Color.Cyan : Color.Orange;
+            sb.Draw(pixel, new Microsoft.Xna.Framework.Rectangle((int)bx, (int)by, 4, 4), bColor * 0.9f);
+        }
+
+        // Enemy explosions
+        foreach (var ex in _enemyExplosions)
+        {
+            float progress = ex.Timer / ex.Duration;
+            float alpha = 1f - progress;
+            float rx = center.X + (ex.Position.X - _player.Position.X) * ZOOM;
+            float ry = center.Y + (ex.Position.Y - _player.Position.Y) * ZOOM;
+            for (int i = 4; i >= 0; i--)
+            {
+                float r = (4f + i * 5f + progress * 30f) * ZOOM;
+                float a = (0.05f + i * 0.06f) * alpha;
+                FillCircle(sb, pixel, rx, ry, r, new Color(255, 140, 0) * a);
+            }
+        }
+
         // Player ship (always at center)
-        DrawShip(sb, pixel, center, t);
+        DrawShip(sb, pixel, center, t, 1f, Color.White, _player.Angle, _player.Velocity);
+
+        // Enemies
+        foreach (var e in _enemies)
+        {
+            float ex = center.X + (e.Position.X - _player.Position.X) * ZOOM;
+            float ey = center.Y + (e.Position.Y - _player.Position.Y) * ZOOM;
+            Vector2 ePos = new(ex, ey);
+            DrawShip(sb, pixel, ePos, t, 0.5f, new Color(255, 140, 0), e.Angle, e.Velocity);
+
+            // Health bar
+            float hpPct = e.Health / e.MaxHealth;
+            int barW = 24;
+            int barH = 3;
+            int barX = (int)ex - barW / 2;
+            int barY = (int)ey + 14;
+            sb.Draw(pixel, new Microsoft.Xna.Framework.Rectangle(barX, barY, barW, barH), new Color(40, 0, 0, 180));
+            sb.Draw(pixel, new Microsoft.Xna.Framework.Rectangle(barX, barY, (int)(barW * hpPct), barH), Color.Red);
+        }
 
         // Docked menu / HUD
         if (_docked)
@@ -624,22 +896,107 @@ public class SystemScene
         // Game Over
         if (_gameOver)
         {
-            // Dim overlay
+            if (!TrainingMode)
+            {
+                // Dim overlay
+                sb.Draw(pixel, new Microsoft.Xna.Framework.Rectangle(0, 0, screenW, screenH),
+                    new Color(0, 0, 0, 200));
+
+                string msg = "GAME OVER";
+                var msgSize = titleFont.MeasureString(msg);
+                float msgX = (screenW - msgSize.X) / 2f;
+                float msgY = screenH * 0.35f;
+                DrawSpacedText(sb, titleFont, msg,
+                    new Microsoft.Xna.Framework.Vector2(msgX, msgY), Color.Red);
+
+                string sub = "Press ENTER to continue";
+                var subSize = font.MeasureString(sub);
+                float subX = (screenW - subSize.X) / 2f;
+                DrawSpacedText(sb, font, sub,
+                    new Microsoft.Xna.Framework.Vector2(subX, msgY + 60), Color.Gray);
+            }
+        }
+
+        // Training mode label
+        if (TrainingMode && !_docked && !_exploding && !_gameOver)
+        {
+            string label = "TRAINING MODE";
+            var labelSz = font.MeasureString(label);
+            float lx = screenW - labelSz.X - 20f;
+            float ly = 20f;
+            DrawSpacedText(sb, font, label,
+                new Microsoft.Xna.Framework.Vector2(lx, ly), Color.Yellow * 0.7f);
+
+            string tip = "[F1] Enemy List  [ESC] Pause";
+            var tipSz = font.MeasureString(tip);
+            DrawSpacedText(sb, font, tip,
+                new Microsoft.Xna.Framework.Vector2(lx + labelSz.X - tipSz.X, ly + 22f), Color.Gray * 0.6f);
+        }
+
+        // Training pause overlay
+        if (_trainingPaused)
+        {
             sb.Draw(pixel, new Microsoft.Xna.Framework.Rectangle(0, 0, screenW, screenH),
-                new Color(0, 0, 0, 200));
+                new Color(0, 0, 0, 180));
 
-            string msg = "GAME OVER";
-            var msgSize = titleFont.MeasureString(msg);
-            float msgX = (screenW - msgSize.X) / 2f;
-            float msgY = screenH * 0.35f;
-            DrawSpacedText(sb, titleFont, msg,
-                new Microsoft.Xna.Framework.Vector2(msgX, msgY), Color.Red);
+            string title = "TRAINING PAUSED";
+            var tSz = titleFont.MeasureString(title);
+            float tX = (screenW - tSz.X) / 2f;
+            float tY = screenH * 0.3f;
+            DrawSpacedText(sb, titleFont, title,
+                new Microsoft.Xna.Framework.Vector2(tX, tY), Color.Yellow);
 
-            string sub = "Press ENTER to continue";
-            var subSize = font.MeasureString(sub);
-            float subX = (screenW - subSize.X) / 2f;
-            DrawSpacedText(sb, font, sub,
-                new Microsoft.Xna.Framework.Vector2(subX, msgY + 60), Color.Gray);
+            string[] opts = { "Resume", "End Training" };
+            for (int i = 0; i < opts.Length; i++)
+            {
+                bool sel = i == _trainingMenuSelection;
+                Color c = sel ? Color.Yellow : Color.Gray;
+                var oSz = font.MeasureString(opts[i]);
+                float oX = (screenW - oSz.X) / 2f;
+                float oY = tY + 80f + i * 36f;
+                if (sel)
+                    DrawSpacedText(sb, titleFont, "> " + opts[i],
+                        new Microsoft.Xna.Framework.Vector2(oX - oSz.X, oY), c);
+                else
+                    DrawSpacedText(sb, font, opts[i],
+                        new Microsoft.Xna.Framework.Vector2(oX, oY), c);
+            }
+        }
+
+        // Training enemy list overlay
+        if (_showEnemyList)
+        {
+            sb.Draw(pixel, new Microsoft.Xna.Framework.Rectangle(0, 0, screenW, screenH),
+                new Color(0, 0, 0, 160));
+
+            string hdr = "TARGET LIST";
+            var hSz = titleFont.MeasureString(hdr);
+            float hX = (screenW - hSz.X) / 2f;
+            float hY = screenH * 0.15f;
+            DrawSpacedText(sb, titleFont, hdr,
+                new Microsoft.Xna.Framework.Vector2(hX, hY), Color.Yellow);
+
+            string[] enemies = {
+                "1. Pirate Scout - Easy",
+                "2. Raider Fighter - Easy",
+                "3. Mercenary Gunship - Medium",
+                "4. Syndicate Cruiser - Hard",
+                "5. Void Dreadnought - Extreme"
+            };
+            float startY = hY + 60f;
+            for (int i = 0; i < enemies.Length; i++)
+            {
+                var eSz = font.MeasureString(enemies[i]);
+                float eX = (screenW - eSz.X) / 2f;
+                DrawSpacedText(sb, font, enemies[i],
+                    new Microsoft.Xna.Framework.Vector2(eX, startY + i * 30f), Color.Gray * 0.8f);
+            }
+
+            string close = "[F1] or [ESC] to close";
+            var cSz = font.MeasureString(close);
+            float cX = (screenW - cSz.X) / 2f;
+            DrawSpacedText(sb, font, close,
+                new Microsoft.Xna.Framework.Vector2(cX, screenH * 0.85f), Color.White * 0.5f);
         }
     }
 
@@ -685,17 +1042,17 @@ public class SystemScene
         }
     }
 
-    private void DrawShip(SpriteBatch sb, Texture2D pixel, Vector2 pos, float t)
+    private void DrawShip(SpriteBatch sb, Texture2D pixel, Vector2 pos, float t,
+        float scale, Color color, float angle, Vector2 velocity)
     {
-        float angle = _player.Angle;
-        float len = 18f * ZOOM;
+        float len = 18f * ZOOM * scale;
 
         var tip = pos + Vector2.FromAngle(angle) * len;
         var left = pos + Vector2.FromAngle(angle + 2.4f) * len * 0.65f;
         var right = pos + Vector2.FromAngle(angle - 2.4f) * len * 0.65f;
 
         // Thrust flames (drawn first, underneath ship)
-        float speed = _player.Velocity.Length();
+        float speed = velocity.Length();
         if (speed > 20f)
         {
             float flameBase = MathF.Min(speed / 5f, 12f) * ZOOM;
@@ -710,15 +1067,16 @@ public class SystemScene
                 var ftip = origins[i] + Vector2.FromAngle(angle + MathF.PI) * fLen;
                 var fside1 = origins[i] + Vector2.FromAngle(angle + MathF.PI + 0.3f) * 3f * ZOOM;
                 var fside2 = origins[i] + Vector2.FromAngle(angle + MathF.PI - 0.3f) * 3f * ZOOM;
-                DrawLine(sb, pixel, ftip.X, ftip.Y, fside1.X, fside1.Y, Color.Orange);
-                DrawLine(sb, pixel, ftip.X, ftip.Y, fside2.X, fside2.Y, Color.Orange);
+                Color flameColor = scale >= 1f ? Color.Orange : color * 0.7f;
+                DrawLine(sb, pixel, ftip.X, ftip.Y, fside1.X, fside1.Y, flameColor);
+                DrawLine(sb, pixel, ftip.X, ftip.Y, fside2.X, fside2.Y, flameColor);
             }
         }
 
         // Main triangle hull
-        DrawLine(sb, pixel, tip.X, tip.Y, left.X, left.Y, Color.White);
-        DrawLine(sb, pixel, tip.X, tip.Y, right.X, right.Y, Color.White);
-        DrawLine(sb, pixel, left.X, left.Y, right.X, right.Y, Color.White);
+        DrawLine(sb, pixel, tip.X, tip.Y, left.X, left.Y, color);
+        DrawLine(sb, pixel, tip.X, tip.Y, right.X, right.Y, color);
+        DrawLine(sb, pixel, left.X, left.Y, right.X, right.Y, color);
 
         // Small cockpit window near front
         float cp = 0.7f;
@@ -727,15 +1085,16 @@ public class SystemScene
         var cf = cockpit + Vector2.FromAngle(angle) * cs;
         var cl = cockpit + Vector2.FromAngle(angle + 1.5f) * cs * 0.4f;
         var cr = cockpit + Vector2.FromAngle(angle - 1.5f) * cs * 0.4f;
-        DrawLine(sb, pixel, cf.X, cf.Y, cl.X, cl.Y, Color.Cyan * 0.6f);
-        DrawLine(sb, pixel, cf.X, cf.Y, cr.X, cr.Y, Color.Cyan * 0.6f);
+        Color cockpitColor = scale >= 1f ? Color.Cyan * 0.6f : color * 0.5f;
+        DrawLine(sb, pixel, cf.X, cf.Y, cl.X, cl.Y, cockpitColor);
+        DrawLine(sb, pixel, cf.X, cf.Y, cr.X, cr.Y, cockpitColor);
 
         // Hull panel lines
         var rearMid = (left + right) * 0.5f;
         float hullLen = (rearMid - cockpit).Length();
 
         // Centerline from cockpit to rear
-        DrawLine(sb, pixel, cockpit.X, cockpit.Y, rearMid.X, rearMid.Y, Color.White * 0.5f);
+        DrawLine(sb, pixel, cockpit.X, cockpit.Y, rearMid.X, rearMid.Y, color * 0.5f);
 
         // Side lines parallel to hull edges
         float sideInset = len * 0.025f;
@@ -745,9 +1104,9 @@ public class SystemScene
         var rEdge = (right - tip).Normalized();
         var lEnd = siL + lEdge * hullLen * 0.8f;
         var rEnd = siR + rEdge * hullLen * 0.8f;
-        DrawLine(sb, pixel, siL.X, siL.Y, lEnd.X, lEnd.Y, Color.White * 0.35f);
-        DrawLine(sb, pixel, siR.X, siR.Y, rEnd.X, rEnd.Y, Color.White * 0.35f);
-        DrawLine(sb, pixel, lEnd.X, lEnd.Y, rEnd.X, rEnd.Y, Color.White * 0.35f);
+        DrawLine(sb, pixel, siL.X, siL.Y, lEnd.X, lEnd.Y, color * 0.35f);
+        DrawLine(sb, pixel, siR.X, siR.Y, rEnd.X, rEnd.Y, color * 0.35f);
+        DrawLine(sb, pixel, lEnd.X, lEnd.Y, rEnd.X, rEnd.Y, color * 0.35f);
     }
 
     private void DrawDockedMenu(SpriteBatch sb, Texture2D pixel, SpriteFont font, SpriteFont titleFont,
@@ -928,6 +1287,15 @@ public class SystemScene
         float ply = cy + _player.Position.Y * scale;
         FillCircle(sb, pixel, plx, ply, 3f, Color.White);
 
+        // Enemies on minimap
+        foreach (var e in _enemies)
+        {
+            float ex = cx + e.Position.X * scale;
+            float ey = cy + e.Position.Y * scale;
+            if (ex >= mx - 2 && ex <= mx + mapSize + 2 && ey >= my - 2 && ey <= my + mapSize + 2)
+                FillCircle(sb, pixel, ex, ey, 2.5f, new Color(255, 140, 0));
+        }
+
         // Waypoint icon label below mini-map
         float iconY = my + mapSize + 6;
         FillCircle(sb, pixel, mx + 4, iconY + 3, 3f, Color.LightBlue);
@@ -1001,6 +1369,186 @@ public class SystemScene
             BodyRadius = 6f,
             Color = Color.Lime
         };
+    }
+
+    private void Respawn()
+    {
+        _gameOver = false;
+        _exploding = false;
+        _debris.Clear();
+        _player.Health = _player.MaxHealth;
+        _temperature = 0f;
+
+        float angle = (MathF.Floor(RandF() * 4f) * MathF.PI / 4f) + MathF.PI / 4f;
+        Vector2 spawnPos = Vector2.FromAngle(angle) * _systemRadius * 0.85f;
+
+        foreach (var p in _planets)
+        {
+            float d = Vector2.Distance(spawnPos, new Vector2(p.X, p.Y));
+            if (d < p.BodyRadius + 150f)
+            {
+                spawnPos = Vector2.FromAngle(angle + 0.5f) * _systemRadius * 0.85f;
+                break;
+            }
+        }
+
+        _player.Position = spawnPos;
+        _player.Velocity = Vector2.Zero;
+    }
+
+    public void PopulateTrainingInventory()
+    {
+        _player.Resources.Clear();
+        _player.QuestItems.Clear();
+        _player.Equipment.Clear();
+
+        var allResources = _game.Galaxy.AllResources;
+        foreach (var r in allResources)
+            _player.Resources.Add(new InventoryEntry { Id = r.Id, Quantity = 10 });
+
+        var allEquipment = _game.Galaxy.AllEquipment;
+        foreach (var eq in allEquipment)
+        {
+            if (_player.Equipment.ContainsKey(eq.Slot))
+                continue;
+            _player.Equipment[eq.Slot] = eq.Id;
+        }
+
+        if (!_player.QuestItems.Any(q => q.Id == "princess_lifepod"))
+            _player.QuestItems.Add(new InventoryEntry { Id = "princess_lifepod", Quantity = 1 });
+    }
+
+    private void SpawnScouts()
+    {
+        int count = 3;
+        for (int i = 0; i < count; i++)
+        {
+            float spawnAngle = RandF() * MathF.Tau;
+            float spawnDist = 300f + RandF() * 300f;
+            Vector2 pos = _player.Position + Vector2.FromAngle(spawnAngle) * spawnDist;
+            float a = RandF() * MathF.Tau;
+            _enemies.Add(new EnemyShip
+            {
+                Position = pos,
+                Velocity = Vector2.FromAngle(a) * (100f + RandF() * 50f),
+                Angle = a,
+                Health = 3f,
+                MaxHealth = 3f,
+                Type = "scout",
+                ShootCooldown = RandF() * 2f,
+                AiState = AiState.Idle,
+                StateTimer = RandF() * 2f,
+                OrbitAngle = spawnAngle
+            });
+        }
+    }
+
+    private void UpdateEnemyAI(ref EnemyShip e, float dt)
+    {
+        Vector2 toPlayer = _player.Position - e.Position;
+        float distToPlayer = toPlayer.Length();
+        Vector2 dirToPlayer = distToPlayer > 0.01f ? toPlayer.Normalized() : Vector2.Zero;
+
+        e.StateTimer -= dt;
+        e.ShootCooldown -= dt;
+
+        float maxSpeed = 112f;
+
+        switch (e.AiState)
+        {
+            case AiState.Idle:
+            {
+                if (e.StateTimer <= 0f)
+                {
+                    e.Angle = RandF() * MathF.Tau;
+                    e.StateTimer = 1.5f + RandF() * 2f;
+                }
+                e.Velocity += Vector2.FromAngle(e.Angle) * dt * 100f;
+                if (e.Velocity.Length() > maxSpeed * 0.7f)
+                    e.Velocity = e.Velocity.Normalized() * maxSpeed * 0.7f;
+                e.Angle = MathF.Atan2(e.Velocity.Y, e.Velocity.X);
+
+                if (distToPlayer < 500f)
+                {
+                    e.AiState = AiState.Orbit;
+                    e.OrbitAngle = MathF.Atan2(
+                        e.Position.Y - _player.Position.Y,
+                        e.Position.X - _player.Position.X);
+                    e.StateTimer = 2f + RandF() * 2f;
+                }
+                break;
+            }
+            case AiState.Orbit:
+            {
+                e.OrbitAngle += dt * 0.5f;
+                float targetDist = 150f + RandF() * 80f;
+                Vector2 orbitTarget = _player.Position + Vector2.FromAngle(e.OrbitAngle) * targetDist;
+                Vector2 toTarget = orbitTarget - e.Position;
+                float tDist = toTarget.Length();
+                if (tDist > 10f)
+                {
+                    e.Velocity += toTarget.Normalized() * dt * 200f;
+                    if (e.Velocity.Length() > maxSpeed)
+                        e.Velocity = e.Velocity.Normalized() * maxSpeed;
+                }
+                else
+                {
+                    e.Velocity *= 0.95f;
+                }
+                if (e.Velocity.Length() > 10f)
+                    e.Angle = MathF.Atan2(e.Velocity.Y, e.Velocity.X);
+
+                if (distToPlayer < 400f && e.StateTimer <= 0f)
+                {
+                    e.AiState = AiState.Attack;
+                    e.StateTimer = 1.5f + RandF() * 1.5f;
+                }
+                break;
+            }
+            case AiState.Attack:
+            {
+                e.Velocity += dirToPlayer * dt * 250f;
+                if (e.Velocity.Length() > maxSpeed * 1.2f)
+                    e.Velocity = e.Velocity.Normalized() * maxSpeed * 1.2f;
+                if (e.Velocity.Length() > 10f)
+                    e.Angle = MathF.Atan2(e.Velocity.Y, e.Velocity.X);
+
+                if (distToPlayer < 350f && e.ShootCooldown <= 0f)
+                {
+                    e.ShootCooldown = 1.5f + RandF() * 0.5f;
+                    Vector2 bulletVel = Vector2.FromAngle(e.Angle) * BULLET_SPEED * 0.8f + e.Velocity * 0.3f;
+                    _bullets.Add(new Bullet
+                    {
+                        Position = e.Position,
+                        Velocity = bulletVel,
+                        Lifetime = BULLET_LIFETIME * 0.8f,
+                        IsPlayerBullet = false
+                    });
+                }
+
+                if (e.StateTimer <= 0f)
+                {
+                    e.AiState = AiState.Orbit;
+                    e.StateTimer = 3f + RandF() * 3f;
+                    e.OrbitAngle = MathF.Atan2(
+                        e.Position.Y - _player.Position.Y,
+                        e.Position.X - _player.Position.X);
+                }
+                break;
+            }
+        }
+
+        e.Position += e.Velocity * dt;
+
+        float distFromCenter = e.Position.Length();
+        if (distFromCenter > _systemRadius * 0.9f)
+        {
+            Vector2 dir = e.Position.Normalized();
+            e.Position = dir * _systemRadius * 0.9f;
+            float velDot = e.Velocity.X * dir.X + e.Velocity.Y * dir.Y;
+            if (velDot > 0f)
+                e.Velocity -= dir * velDot * 1.5f;
+        }
     }
 
     private static void DrawLine(SpriteBatch sb, Texture2D pixel, float x1, float y1, float x2, float y2, Color color)

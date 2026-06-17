@@ -46,7 +46,7 @@ public class Game1 : Game
     private Vector2 _galaxyPlayerPos;
     private Vector2 _galaxyPlayerVel;
 
-    private int _inventoryTab; // 0=quest items, 1=resources, 2=equipment
+    private int _inventoryTab;
     private int _invScroll;
 
     public GameTime GameTime => _gameTime;
@@ -64,6 +64,34 @@ public class Game1 : Game
         _player.Position = _galaxyPlayerPos;
         _player.Velocity = _galaxyPlayerVel;
         _viewMode = ViewMode.Galaxy;
+    }
+
+    public void EnterTraining()
+    {
+        _galaxyPlayerPos = _player.Position;
+        _galaxyPlayerVel = _player.Velocity;
+
+        // Find nearest system to enter
+        var sys = _galaxy.FindSystemAtPosition(_player.Position, 300f) ?? _galaxy.FindSystemById("proxima");
+        if (sys != null)
+        {
+            _systemScene.EnterSystem(sys, this);
+            _systemScene.TrainingMode = true;
+            _systemScene.PopulateTrainingInventory();
+            _viewMode = ViewMode.System;
+            _currentMenu = MenuType.None;
+            _prevKeyboard = Keyboard.GetState();
+        }
+    }
+
+    public void ExitTraining()
+    {
+        _systemScene.TrainingMode = false;
+        _player.Position = _galaxyPlayerPos;
+        _player.Velocity = _galaxyPlayerVel;
+        _viewMode = ViewMode.Galaxy;
+        _currentMenu = MenuType.None;
+        _prevKeyboard = Keyboard.GetState();
     }
 
     public void ShowNewGameMenu()
@@ -278,7 +306,7 @@ public class Game1 : Game
             _starfield.Update(dt, _player.Velocity);
             CheckSystemProximity();
         }
-        else // ViewMode.System
+        else if (_viewMode == ViewMode.System)
         {
             if (_currentMenu == MenuType.Pause)
             {
@@ -292,13 +320,15 @@ public class Game1 : Game
                 {
                     if (_menuSelection == 0) // New Game
                         NewGame();
-                    else if (_menuSelection == 3) // Controls
+                    else if (_menuSelection == 3) // Training Mode
+                        EnterTraining();
+                    else if (_menuSelection == 4) // Controls
                         _currentMenu = MenuType.Controls;
-                    else if (_menuSelection == 4) // Quit
+                    else if (_menuSelection == 5) // Quit
                         Exit();
                 }
 
-                int maxItem = 4;
+                int maxItem = 5;
                 if (_menuSelection < 0) _menuSelection = maxItem;
                 if (_menuSelection > maxItem) _menuSelection = 0;
             }
@@ -307,12 +337,12 @@ public class Game1 : Game
                 if (JustPressed(keyboard, Keys.Escape))
                 {
                     _currentMenu = MenuType.Pause;
-                    _menuSelection = 3;
+                    _menuSelection = 4;
                 }
             }
             else
             {
-                if (JustPressed(keyboard, Keys.Escape) && !_systemScene.Docked)
+                if (JustPressed(keyboard, Keys.Escape) && !_systemScene.Docked && !_systemScene.TrainingMode)
                 {
                     _currentMenu = MenuType.Pause;
                     _menuSelection = 0;
@@ -374,9 +404,11 @@ public class Game1 : Game
             {
                 if (_menuSelection == 0) // New Game
                     NewGame();
-                else if (_menuSelection == 3) // Controls
+                else if (_menuSelection == 3) // Training Mode
+                    EnterTraining();
+                else if (_menuSelection == 4) // Controls
                     _currentMenu = MenuType.Controls;
-                else if (_menuSelection == 4) // Quit
+                else if (_menuSelection == 5) // Quit
                     Exit();
             }
         }
@@ -385,7 +417,7 @@ public class Game1 : Game
             if (JustPressed(keyboard, Keys.Escape))
             {
                 _currentMenu = MenuType.Pause;
-                _menuSelection = 3;
+                _menuSelection = 4;
             }
         }
         else if (_currentMenu == MenuType.SystemInfo)
@@ -482,7 +514,7 @@ public class Game1 : Game
 
         int maxItem = 0;
         if (_currentMenu == MenuType.SystemInfo) maxItem = 2;
-        else if (_currentMenu == MenuType.Pause) maxItem = 4;
+        else if (_currentMenu == MenuType.Pause) maxItem = 5;
         else if (_currentMenu == MenuType.UpgradeShop)
         {
             if (_menuSystem != null)
@@ -559,7 +591,7 @@ public class Game1 : Game
             if (_currentMenu != MenuType.None)
                 DrawMenu();
         }
-        else
+        else if (_viewMode == ViewMode.System)
         {
             _systemScene.Draw(_spriteBatch, _pixel, _font, _titleFont);
 
@@ -1005,7 +1037,7 @@ public class Game1 : Game
                 new Microsoft.Xna.Framework.Vector2(textX, textY), Color.Cyan);
             textY += 60;
 
-            string[] options = { "New Game", "Save Game", "Load Game", "Controls", "Quit" };
+            string[] options = { "New Game", "Save Game", "Load Game", "Training Mode", "Controls", "Quit" };
             for (int i = 0; i < options.Length; i++)
             {
                 bool selected = _menuSelection == i;

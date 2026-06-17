@@ -23,7 +23,7 @@ public class Player
 
     public float BaseMaxSpeed { get; set; } = 300f;
     public float BaseThrust { get; set; } = 500f;
-    public float BaseRotationSpeed { get; set; } = 3f;
+    public float BaseRotationSpeed { get; set; } = 5f;
 
     private const float Drag = 0.98f;
 
