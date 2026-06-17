@@ -48,6 +48,14 @@ public class Game1 : Game
     private Vector2 _galaxyPlayerPos;
     private Vector2 _galaxyPlayerVel;
 
+    private int _selectedConnectionIndex;
+    private bool _isTraveling;
+    private string? _travelDestId;
+    private float _travelLerp;
+    private Vector2 _travelStartPos;
+    private Vector2 _travelEndPos;
+    private const float TravelDuration = 2f;
+
     private int _inventoryTab;
     private int _invScroll;
 
@@ -63,8 +71,13 @@ public class Game1 : Game
 
     public void ExitToGalaxy()
     {
-        _player.Position = _galaxyPlayerPos;
-        _player.Velocity = _galaxyPlayerVel;
+        var sys = _galaxy.FindSystemById(_player.CurrentSystemId ?? "proxima");
+        if (sys != null)
+        {
+            _player.Position = new Vector2(sys.X, sys.Y);
+            _player.Velocity = Vector2.Zero;
+        }
+        _isTraveling = false;
         _viewMode = ViewMode.Galaxy;
     }
 
@@ -73,8 +86,7 @@ public class Game1 : Game
         _galaxyPlayerPos = _player.Position;
         _galaxyPlayerVel = _player.Velocity;
 
-        // Find nearest system to enter
-        var sys = _galaxy.FindSystemAtPosition(_player.Position, 300f) ?? _galaxy.FindSystemById("proxima");
+        var sys = _galaxy.FindSystemById(_player.CurrentSystemId ?? "proxima");
         if (sys != null)
         {
             _systemScene.EnterSystem(sys, this);
@@ -89,8 +101,12 @@ public class Game1 : Game
     public void ExitTraining()
     {
         _systemScene.TrainingMode = false;
-        _player.Position = _galaxyPlayerPos;
-        _player.Velocity = _galaxyPlayerVel;
+        var sys = _galaxy.FindSystemById(_player.CurrentSystemId ?? "proxima");
+        if (sys != null)
+        {
+            _player.Position = new Vector2(sys.X, sys.Y);
+            _player.Velocity = Vector2.Zero;
+        }
         _viewMode = ViewMode.Galaxy;
         _currentMenu = MenuType.None;
         _prevKeyboard = Keyboard.GetState();
@@ -138,6 +154,9 @@ public class Game1 : Game
 
         _galaxyPlayerPos = _player.Position;
         _galaxyPlayerVel = Vector2.Zero;
+        _selectedConnectionIndex = 0;
+        _isTraveling = false;
+        _travelDestId = null;
         _viewMode = ViewMode.Galaxy;
         _currentMenu = MenuType.None;
 
@@ -310,31 +329,105 @@ public class Game1 : Game
 
             if (_currentMenu == MenuType.None)
             {
-                bool w = keyboard.IsKeyDown(Keys.W) || keyboard.IsKeyDown(Keys.Up);
-                bool s = keyboard.IsKeyDown(Keys.S) || keyboard.IsKeyDown(Keys.Down);
-                bool a = keyboard.IsKeyDown(Keys.A) || keyboard.IsKeyDown(Keys.Left);
-                bool d = keyboard.IsKeyDown(Keys.D) || keyboard.IsKeyDown(Keys.Right);
-                bool boost = keyboard.IsKeyDown(Keys.LeftShift) || keyboard.IsKeyDown(Keys.RightShift);
-
-                _player.Update(dt, w, s, a, d);
-                if (boost)
+                if (_isTraveling)
                 {
-                    _player.Velocity *= 1.02f;
-                    if (_player.Velocity.Length() > _player.MaxSpeed * 1.5f)
-                        _player.Velocity = _player.Velocity.Normalized() * _player.MaxSpeed * 1.5f;
-                }
-                _player.Update(dt);
-
-                // Enter system — checked before _prevKeyboard is updated
-                if (keyboard.IsKeyDown(Keys.Enter) && _prevKeyboard.IsKeyUp(Keys.Enter))
-                {
-                    var sys = _galaxy.FindSystemAtPosition(_player.Position, 80f);
-                    if (sys != null)
+                    _travelLerp += dt / TravelDuration;
+                    if (_travelLerp >= 1f)
                     {
-                        _galaxyPlayerPos = _player.Position;
-                        _galaxyPlayerVel = _player.Velocity;
-                        _systemScene.EnterSystem(sys, this);
-                        _viewMode = ViewMode.System;
+                        _travelLerp = 1f;
+                        var destSys = _galaxy.FindSystemById(_travelDestId!);
+                        if (destSys != null)
+                        {
+                            _player.Position = new Vector2(destSys.X, destSys.Y);
+                            _player.CurrentSystemId = destSys.Id;
+                            _galaxy.CurrentSystem = destSys;
+                            _galaxy.CheckQuestProgress(_player);
+                            _galaxy.RefreshAvailableQuests(_player);
+                            SetStatus($"Arrived at {destSys.Name}");
+                            _galaxyPlayerPos = _player.Position;
+                            _galaxyPlayerVel = Vector2.Zero;
+                        }
+                        _isTraveling = false;
+                        _travelDestId = null;
+                        _selectedConnectionIndex = 0;
+                    }
+                    else
+                    {
+                        float t = _travelLerp;
+                        _player.Position = new Vector2(
+                            _travelStartPos.X + (_travelEndPos.X - _travelStartPos.X) * t,
+                            _travelStartPos.Y + (_travelEndPos.Y - _travelStartPos.Y) * t
+                        );
+                        _player.Velocity = new Vector2(
+                            _travelEndPos.X - _travelStartPos.X,
+                            _travelEndPos.Y - _travelStartPos.Y
+                        ).Normalized() * 200f;
+                    }
+                }
+                else if (_player.CurrentSystemId != null)
+                {
+                    var currentSys = _galaxy.FindSystemById(_player.CurrentSystemId);
+                    if (currentSys != null)
+                    {
+                        var connections = currentSys.Connections
+                            .Where(id => !_routeManager.IsBlocked(_player.CurrentSystemId, id))
+                            .ToList();
+
+                        if (connections.Count > 0)
+                        {
+                            if (_selectedConnectionIndex >= connections.Count)
+                                _selectedConnectionIndex = 0;
+
+                            bool upHit = (keyboard.IsKeyDown(Keys.Up) && _prevKeyboard.IsKeyUp(Keys.Up)) ||
+                                         (keyboard.IsKeyDown(Keys.W) && _prevKeyboard.IsKeyUp(Keys.W));
+                            bool downHit = (keyboard.IsKeyDown(Keys.Down) && _prevKeyboard.IsKeyUp(Keys.Down)) ||
+                                           (keyboard.IsKeyDown(Keys.S) && _prevKeyboard.IsKeyUp(Keys.S));
+                            if (upHit) _selectedConnectionIndex = (_selectedConnectionIndex - 1 + connections.Count) % connections.Count;
+                            if (downHit) _selectedConnectionIndex = (_selectedConnectionIndex + 1) % connections.Count;
+
+                            const float JUMP_FUEL_COST = 30f;
+
+                            if (keyboard.IsKeyDown(Keys.Enter) && _prevKeyboard.IsKeyUp(Keys.Enter))
+                            {
+                                string targetId = connections[_selectedConnectionIndex];
+                                var targetSys = _galaxy.FindSystemById(targetId);
+                                if (targetSys != null)
+                                {
+                                    if (_player.Fuel >= JUMP_FUEL_COST)
+                                    {
+                                        _player.Fuel -= JUMP_FUEL_COST;
+                                        _travelDestId = targetId;
+                                        _travelStartPos = _player.Position;
+                                        _travelEndPos = new Vector2(targetSys.X, targetSys.Y);
+                                        _travelLerp = 0f;
+                                        _isTraveling = true;
+                                        _player.Velocity = Vector2.Zero;
+                                        SetStatus($"Traveling to {targetSys.Name}...");
+                                    }
+                                    else
+                                    {
+                                        SetStatus($"Need {JUMP_FUEL_COST} fuel (have {_player.Fuel}). [Y] Exchange 1/4 HP for 1/4 fuel");
+                                    }
+                                }
+                            }
+
+                            // Fuel exchange in galaxy view
+                            if (_player.Fuel < JUMP_FUEL_COST && _player.Health > _player.MaxHealth / 4 &&
+                                keyboard.IsKeyDown(Keys.Y) && _prevKeyboard.IsKeyUp(Keys.Y))
+                            {
+                                _player.Health -= _player.MaxHealth / 4;
+                                _player.Fuel += _player.MaxFuel / 4;
+                                SetStatus($"Exchanged HP for fuel. Fuel: {_player.Fuel}");
+                            }
+                        }
+
+                        if (keyboard.IsKeyDown(Keys.E) && _prevKeyboard.IsKeyUp(Keys.E))
+                        {
+                            _galaxyPlayerPos = _player.Position;
+                            _galaxyPlayerVel = Vector2.Zero;
+                            _systemScene.EnterSystem(currentSys, this);
+                            _viewMode = ViewMode.System;
+                        }
                     }
                 }
             }
@@ -354,7 +447,6 @@ public class Game1 : Game
             }
 
             _starfield.Update(dt, _player.Velocity);
-            CheckSystemProximity();
         }
         else if (_viewMode == ViewMode.System)
         {
@@ -564,25 +656,6 @@ public class Game1 : Game
         if (_menuSelection > maxItem) _menuSelection = 0;
     }
 
-    private void CheckSystemProximity()
-    {
-        var nearby = _galaxy.FindSystemAtPosition(_player.Position, 80f);
-        if (nearby != null)
-        {
-            if (_player.CurrentSystemId != nearby.Id)
-            {
-                _player.CurrentSystemId = nearby.Id;
-                _galaxy.CurrentSystem = nearby;
-                _galaxy.CheckQuestProgress(_player);
-                _galaxy.RefreshAvailableQuests(_player);
-            }
-        }
-        else
-        {
-            _galaxy.CurrentSystem = null;
-        }
-    }
-
     private void SetStatus(string msg)
     {
         _statusMessage = msg;
@@ -688,9 +761,6 @@ public class Game1 : Game
                 float x2 = other.X + offset.X;
                 float y2 = other.Y + offset.Y;
 
-                bool nearby1 = Vector2.Distance(_player.Position, new Vector2(sys.X, sys.Y)) < 300f;
-                bool nearby2 = Vector2.Distance(_player.Position, new Vector2(other.X, other.Y)) < 300f;
-
                 bool blocked = _routeManager.IsBlocked(sys.Id, connId);
                 if (blocked)
                 {
@@ -699,8 +769,35 @@ public class Game1 : Game
                 }
                 else
                 {
-                    float lineAlpha = (nearby1 || nearby2) ? 0.5f : 0.2f;
+                    bool isCurrentRoute = (_player.CurrentSystemId == sys.Id || _player.CurrentSystemId == connId);
+                    float lineAlpha = isCurrentRoute ? 0.4f : 0.15f;
                     DrawLine(x1, y1, x2, y2, new Color(60, 80, 120) * lineAlpha);
+                }
+            }
+        }
+
+        // Highlight selected route on map
+        if (!_isTraveling && _player.CurrentSystemId != null)
+        {
+            var currentSys = _galaxy.FindSystemById(_player.CurrentSystemId);
+            if (currentSys != null)
+            {
+                var openConns = currentSys.Connections
+                    .Where(id => !_routeManager.IsBlocked(_player.CurrentSystemId, id))
+                    .ToList();
+                if (_selectedConnectionIndex < openConns.Count)
+                {
+                    var target = _galaxy.FindSystemById(openConns[_selectedConnectionIndex]);
+                    if (target != null)
+                    {
+                        float x1 = currentSys.X + offset.X;
+                        float y1 = currentSys.Y + offset.Y;
+                        float x2 = target.X + offset.X;
+                        float y2 = target.Y + offset.Y;
+                        float pulse = MathF.Sin((float)_gameTime.TotalGameTime.TotalSeconds * 3f) * 0.2f + 0.8f;
+                        DrawLine(x1, y1, x2, y2, Color.Cyan * pulse);
+                        DrawLine(x1, y1, x2, y2, Color.White * (pulse * 0.3f));
+                    }
                 }
             }
         }
@@ -721,18 +818,14 @@ public class Game1 : Game
             float pulse = MathF.Sin(t * 1.5f + sys.X * 0.01f) * 0.12f + 1f;
             float drawRadius = sys.Radius * pulse;
 
-            float dist = Vector2.Distance(_player.Position, new Vector2(sys.X, sys.Y));
-            bool nearby = dist < 120f;
-            float nearbyGlow = nearby ? (1f - dist / 120f) * 0.5f : 0f;
-
             var label = sys.Name;
             var labelSize = _font.MeasureString(label);
 
             // Outer glow - big and bright
             for (int i = 5; i >= 0; i--)
             {
-                float r = drawRadius + i * 10f + nearbyGlow * 20f;
-                float alpha = 0.02f + i * 0.06f + nearbyGlow;
+                float r = drawRadius + i * 10f;
+                float alpha = 0.02f + i * 0.06f;
                 FillCircle(sx, sy, r, color * MathF.Min(alpha, 0.5f));
             }
 
@@ -742,32 +835,31 @@ public class Game1 : Game
             // Core edge
             DrawCircle(sx, sy, drawRadius * 0.7f, color);
 
-            // Proximity highlight ring and dock prompt
-            if (nearby)
+            // Player's current system highlight
+            if (_player.CurrentSystemId == sys.Id)
             {
-                float ringAlpha = MathF.Min(1f, (120f - dist) / 60f);
-                DrawCircle(sx, sy, drawRadius + 8f, Color.Yellow * ringAlpha);
-                DrawCircle(sx, sy, drawRadius + 12f, Color.Yellow * ringAlpha * 0.4f);
-
-                if (dist < 80f)
-                {
-                    string prompt = "[Enter] Enter System";
-                    var ps = _font.MeasureString(prompt);
-                    float px2 = sx - ps.X / 2f;
-                    float py2 = sy - drawRadius - 20f;
-                    byte flash = (byte)((MathF.Sin(t * 4f) * 0.3f + 0.7f) * 255);
-                    _spriteBatch.Draw(_pixel,
-                        new Microsoft.Xna.Framework.Rectangle((int)px2 - 4, (int)py2 - 2,
-                            (int)ps.X + 8, (int)ps.Y + 4),
-                        new Color(0, 0, 0, 160));
-                    DrawSpacedText(_font, prompt,
-                        new Microsoft.Xna.Framework.Vector2(px2, py2),
-                        new Color(255, 255, 100, (int)flash));
-                }
+                float ringAlpha = MathF.Sin((float)_gameTime.TotalGameTime.TotalSeconds * 2f) * 0.2f + 0.6f;
+                DrawCircle(sx, sy, drawRadius + 8f, Color.Cyan * ringAlpha);
+                DrawCircle(sx, sy, drawRadius + 14f, Color.Cyan * ringAlpha * 0.3f);
             }
-            else if (dist < 400f)
+
+            // Quest target indicator
+            bool isQuestTarget = false;
+            foreach (var q in _galaxy.ActiveQuests)
             {
-                // Show distance hint for nearby systems
+                if (q.ObjectiveType == "travel" && q.TargetSystem == sys.Id) { isQuestTarget = true; break; }
+            }
+            if (isQuestTarget && _player.CurrentSystemId != sys.Id)
+            {
+                float pulse2 = MathF.Sin((float)_gameTime.TotalGameTime.TotalSeconds * 2f) * 0.3f + 0.7f;
+                DrawCircle(sx, sy, drawRadius + 18f, Color.Gold * pulse2);
+                DrawCircle(sx, sy, drawRadius + 24f, Color.Gold * pulse2 * 0.3f);
+            }
+
+            // Distance hint for non-current systems
+            float dist = Vector2.Distance(_player.Position, new Vector2(sys.X, sys.Y));
+            if (dist < 400f && _player.CurrentSystemId != sys.Id)
+            {
                 string hint = $"{sys.Name}  -  {(int)dist}u";
                 var hintSize = _font.MeasureString(hint);
                 float hx = sx - hintSize.X / 2f;
@@ -780,24 +872,15 @@ public class Game1 : Game
             // Label with background box
             float labelX = sx - labelSize.X / 2f;
             float labelY = sy + drawRadius + 6f;
-            byte bg = (byte)(nearby ? 60 : 20);
+            bool isCurrent = _player.CurrentSystemId == sys.Id;
+            byte bg = (byte)(isCurrent ? 60 : 20);
             _spriteBatch.Draw(_pixel,
                 new Microsoft.Xna.Framework.Rectangle((int)labelX - 4, (int)labelY - 2,
                     (int)labelSize.X + 8, (int)labelSize.Y + 4),
                 new Color(0, 0, 0, (int)bg));
             DrawSpacedText(_font, label,
                 new Microsoft.Xna.Framework.Vector2(labelX, labelY),
-                nearby ? Color.White : Color.White * 0.7f);
-
-            // Distance label
-            if (dist > 50f && dist < 600f)
-            {
-                string distLabel = $"{(int)dist}u";
-                var distSize = _font.MeasureString(distLabel);
-                DrawSpacedText(_font, distLabel,
-                    new Microsoft.Xna.Framework.Vector2(sx - distSize.X / 2f, labelY + labelSize.Y + 2),
-                    Color.Gray * MathF.Max(0.2f, 1f - dist / 600f));
-            }
+                isCurrent ? Color.Cyan : Color.White * 0.7f);
         }
 
         // Quest target indicators
@@ -842,7 +925,41 @@ public class Game1 : Game
 
     private void DrawShip(Vector2 center)
     {
-        float angle = _player.Angle;
+        float angle;
+        if (_isTraveling)
+        {
+            float dx = _travelEndPos.X - _travelStartPos.X;
+            float dy = _travelEndPos.Y - _travelStartPos.Y;
+            angle = MathF.Atan2(dy, dx);
+        }
+        else if (_player.CurrentSystemId != null)
+        {
+            var currentSys = _galaxy.FindSystemById(_player.CurrentSystemId);
+            if (currentSys != null)
+            {
+                var connections = currentSys.Connections
+                    .Where(id => !_routeManager.IsBlocked(_player.CurrentSystemId, id))
+                    .ToList();
+                if (_selectedConnectionIndex < connections.Count)
+                {
+                    var target = _galaxy.FindSystemById(connections[_selectedConnectionIndex]);
+                    if (target != null)
+                    {
+                        float dx = target.X - currentSys.X;
+                        float dy = target.Y - currentSys.Y;
+                        angle = MathF.Atan2(dy, dx);
+                        _player.Angle = angle;
+                    }
+                    else { angle = _player.Angle; }
+                }
+                else { angle = _player.Angle; }
+            }
+            else { angle = _player.Angle; }
+        }
+        else
+        {
+            angle = _player.Angle;
+        }
         float len = 18f;
 
         var tip = center + Vector2.FromAngle(angle) * len;
@@ -909,44 +1026,104 @@ public class Game1 : Game
     {
         // Top-left info
         DrawSpacedText(_font, $"Credits: {_player.Credits}", new Microsoft.Xna.Framework.Vector2(10, 10), Color.Yellow);
+        DrawSpacedText(_font, $"Fuel: {_player.Fuel:F0}/{_player.MaxFuel}  HP: {_player.Health}/{_player.MaxHealth}",
+            new Microsoft.Xna.Framework.Vector2(10, 190), Color.Gray * 0.6f);
 
         // AI status
         string diffStr = _routeManager.Difficulty.ToString();
-        int blocked = _routeManager.CountBlocked;
+        int blockedCount = _routeManager.CountBlocked;
         int maxBlocked = _routeManager.MaxBlocked;
-        Color aiColor = blocked > 0 ? new Color(255, 150, 100) : Color.Gray * 0.6f;
-        DrawSpacedText(_font, $"AI [{diffStr}]  Blockades: {blocked}/{maxBlocked}",
+        Color aiColor = blockedCount > 0 ? new Color(255, 150, 100) : Color.Gray * 0.6f;
+        DrawSpacedText(_font, $"AI [{diffStr}]  Blockades: {blockedCount}/{maxBlocked}",
             new Microsoft.Xna.Framework.Vector2(10, 170), aiColor);
 
-        if (_galaxy.CurrentSystem != null)
+        if (_isTraveling)
         {
-            string info = $"Docked at: {_galaxy.CurrentSystem.Name} [{_galaxy.CurrentSystem.Faction}]";
-            DrawSpacedText(_font, info, new Microsoft.Xna.Framework.Vector2(10, 30), Color.Cyan);
-            DrawSpacedText(_font, "Press E / Click  -  Open station services", new Microsoft.Xna.Framework.Vector2(10, 50), Color.Gray * 0.7f);
+            // Travel in progress
+            var destSys = _galaxy.FindSystemById(_travelDestId ?? "");
+            string destName = destSys?.Name ?? "unknown";
+            float pct = _travelLerp * 100f;
+            DrawSpacedText(_font, $"Traveling to {destName}... {pct:F0}%",
+                new Microsoft.Xna.Framework.Vector2(10, 30), Color.Cyan);
         }
-        else
+        else if (_player.CurrentSystemId != null)
         {
-            // Show nearest system
-            float nearestDist = float.MaxValue;
-            StarSystemData? nearest = null;
-            foreach (var sys in _galaxy.Systems)
+            var currentSys = _galaxy.FindSystemById(_player.CurrentSystemId);
+            if (currentSys != null)
             {
-                float d = Vector2.Distance(_player.Position, new Vector2(sys.X, sys.Y));
-                if (d < nearestDist) { nearestDist = d; nearest = sys; }
-            }
+                string info = $"Docked at: {currentSys.Name} [{currentSys.Faction}]";
+                DrawSpacedText(_font, info, new Microsoft.Xna.Framework.Vector2(10, 30), Color.Cyan);
+                DrawSpacedText(_font, "[E] Enter System",
+                    new Microsoft.Xna.Framework.Vector2(10, 50), Color.Gray * 0.7f);
 
-            if (nearest != null)
-            {
-                string dir = GetDirection(_player.Position, new Vector2(nearest.X, nearest.Y));
-                DrawSpacedText(_font, $"Nearest: {nearest.Name} ({dir})",
-                    new Microsoft.Xna.Framework.Vector2(10, 30), Color.Gray * 0.8f);
-                DrawSpacedText(_font, $"Distance: {(int)nearestDist}",
-                    new Microsoft.Xna.Framework.Vector2(10, 50), Color.Gray * 0.6f);
+                // Route selection list
+                var connections = currentSys.Connections
+                    .Select(id => _galaxy.FindSystemById(id))
+                    .Where(s => s != null)
+                    .Cast<StarSystemData>()
+                    .ToList();
+
+                float routeY = 210;
+                DrawSpacedText(_font, "--- Connections ---",
+                    new Microsoft.Xna.Framework.Vector2(10, routeY), Color.Gold);
+                routeY += 22;
+
+                int idx = 0;
+                foreach (var conn in connections)
+                {
+                    bool blocked = _routeManager.IsBlocked(currentSys.Id, conn.Id);
+                    bool selected = idx == _selectedConnectionIndex;
+                    Color c;
+                    string prefix;
+                    if (blocked)
+                    {
+                        c = Color.Red * 0.5f;
+                        prefix = selected ? "> " : "  ";
+                    }
+                    else if (selected)
+                    {
+                        c = Color.Yellow;
+                        prefix = "> ";
+                    }
+                    else
+                    {
+                        c = Color.White * 0.8f;
+                        prefix = "  ";
+                    }
+                    string label = $"{prefix}{conn.Name}  [{(int)Vector2.Distance(new Vector2(currentSys.X, currentSys.Y), new Vector2(conn.X, conn.Y))}u]";
+                    if (blocked) label += "  BLOCKED";
+                    DrawSpacedText(_font, label,
+                        new Microsoft.Xna.Framework.Vector2(10, routeY), c);
+                    routeY += 18;
+                    idx++;
+                }
+
+                // Show blocked connections below
+                var blockedConns = currentSys.Connections
+                    .Where(id => _routeManager.IsBlocked(currentSys.Id, id))
+                    .Select(id => _galaxy.FindSystemById(id))
+                    .Where(s => s != null)
+                    .Cast<StarSystemData>()
+                    .ToList();
+
+                if (blockedConns.Count > 0 && connections.Count > 0)
+                {
+                    routeY += 6;
+                    DrawSpacedText(_font, "--- Blocked (unavailable) ---",
+                        new Microsoft.Xna.Framework.Vector2(10, routeY), Color.Red * 0.6f);
+                    routeY += 18;
+                    foreach (var conn in blockedConns)
+                    {
+                        DrawSpacedText(_font, $"  {conn.Name}",
+                            new Microsoft.Xna.Framework.Vector2(10, routeY), Color.Red * 0.4f);
+                        routeY += 16;
+                    }
+                }
             }
         }
 
         // Active quests
-        float y = 80;
+        float y = _isTraveling ? 55 : 80;
         if (_galaxy.ActiveQuests.Count > 0)
         {
             DrawSpacedText(_font, "--- Active Quests ---", new Microsoft.Xna.Framework.Vector2(10, y), Color.Gold);
@@ -986,7 +1163,13 @@ public class Game1 : Game
         }
 
         // Controls hint
-        string controls = "WASD/Arrows: Fly | Shift: Boost | E: Interact | Q: Accept Quest | ESC: Close";
+        string controls;
+        if (_isTraveling)
+            controls = "Traveling...";
+        else if (_player.CurrentSystemId != null)
+            controls = "Up/Down: Select Route | Enter: Travel | E: Enter System | Q: Quest Log | ESC: Pause";
+        else
+            controls = "Q: Quest Log | ESC: Pause";
         var controlsSize = _font.MeasureString(controls);
         DrawSpacedText(_font, controls,
             new Microsoft.Xna.Framework.Vector2(ScreenWidth / 2f - controlsSize.X / 2f, ScreenHeight - 25),
@@ -1220,12 +1403,10 @@ public class Game1 : Game
 
             string[] lines = {
                 "Galaxy View",
-                "  W / Up        Thrust forward",
-                "  S / Down      Thrust backward",
-                "  A / Left      Rotate left",
-                "  D / Right     Rotate right",
-                "  Shift         Boost",
-                "  Enter         Enter system",
+                "  Up / W        Select route up",
+                "  Down / S      Select route down",
+                "  Enter         Travel along selected route",
+                "  E             Enter system (at docked system)",
                 "",
                 "System View",
                 "  W / Up        Thrust forward",

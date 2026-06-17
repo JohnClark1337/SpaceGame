@@ -395,6 +395,14 @@ public class SystemScene
 
             _player.Update(dt);
 
+            // Fuel consumption while moving in system
+            float speed = _player.Velocity.Length();
+            if (speed > 10f && _player.Fuel > 0)
+            {
+                float fuelRate = 3f;
+                _player.Fuel = MathF.Max(0, _player.Fuel - (speed / _player.MaxSpeed) * fuelRate * dt);
+            }
+
             // Temperature (non-linear: slow rise far away, spikes near star)
             float dist = _player.Position.Length();
             float norm = MathHelper.Clamp(
@@ -478,6 +486,18 @@ public class SystemScene
                 if (JustPressed(keyboard, Keys.E))
                 {
                     _docked = true;
+                    _player.Fuel = _player.MaxFuel;
+                    _player.Health = _player.MaxHealth;
+                }
+            }
+
+            // Fuel exchange prompt (when out of fuel)
+            if (_player.Fuel <= 0 && _player.Health > _player.MaxHealth / 4 && !_exploding && !_gameOver)
+            {
+                if (JustPressed(keyboard, Keys.Y))
+                {
+                    _player.Health -= _player.MaxHealth / 4;
+                    _player.Fuel += _player.MaxFuel / 4;
                 }
             }
 
@@ -986,6 +1006,32 @@ public class SystemScene
             DrawSpacedText(sb, font, hpStr,
                 new Microsoft.Xna.Framework.Vector2(hbX + hbW / 2 - hpSize.X / 2, hbY + hbH + 4),
                 Color.Gray * 0.7f);
+
+            // Fuel bar (to the right of HP bar)
+            int fbX = hbX + hbW + 28;
+            int fbY = barY;
+            int fbW = 14;
+            int fbH = barH;
+
+            var fuelLabel = font.MeasureString("FUL");
+            DrawSpacedText(sb, font, "FUL",
+                new Microsoft.Xna.Framework.Vector2(fbX + fbW / 2 - fuelLabel.X / 2, fbY - 22), Color.Gray * 0.7f);
+
+            sb.Draw(pixel, new Microsoft.Xna.Framework.Rectangle(fbX, fbY, fbW, fbH),
+                new Color(20, 20, 0, 180));
+            DrawRect(sb, pixel, fbX, fbY, fbW, fbH, Color.Gray * 0.3f);
+
+            float fuelPct = _player.Fuel / _player.MaxFuel;
+            int fFillH = (int)(fbH * fuelPct);
+            int fFillY = fbY + fbH - fFillH;
+            sb.Draw(pixel, new Microsoft.Xna.Framework.Rectangle(fbX + 2, fFillY, fbW - 4, fFillH),
+                new Color(200, 200, 0, 220));
+
+            string fuelStr = $"{(int)_player.Fuel}";
+            var fuelSize = font.MeasureString(fuelStr);
+            DrawSpacedText(sb, font, fuelStr,
+                new Microsoft.Xna.Framework.Vector2(fbX + fbW / 2 - fuelSize.X / 2, fbY + fbH + 4),
+                Color.Gray * 0.7f);
         }
 
         // Overheating warning
@@ -1045,6 +1091,25 @@ public class SystemScene
                 DrawSpacedText(sb, font, sub,
                     new Microsoft.Xna.Framework.Vector2(subX, msgY + 60), Color.Gray);
             }
+        }
+
+        // Fuel exchange prompt (out of fuel)
+        if (_player.Fuel <= 0 && !_exploding && !_gameOver && !_docked && _player.Health > _player.MaxHealth / 4)
+        {
+            sb.Draw(pixel, new Microsoft.Xna.Framework.Rectangle(0, 0, screenW, screenH),
+                new Color(0, 0, 0, 140));
+
+            string msg = "OUT OF FUEL";
+            var msgSize = titleFont.MeasureString(msg);
+            float msgX = (screenW - msgSize.X) / 2f;
+            DrawSpacedText(sb, titleFont, msg,
+                new Microsoft.Xna.Framework.Vector2(msgX, screenH * 0.38f), new Color(255, 200, 0));
+
+            string sub = "[Y] Exchange 1/4 HP for 1/4 fuel";
+            var subSize = font.MeasureString(sub);
+            float subX = (screenW - subSize.X) / 2f;
+            DrawSpacedText(sb, font, sub,
+                new Microsoft.Xna.Framework.Vector2(subX, screenH * 0.38f + 50), Color.White);
         }
 
         // Training mode label
