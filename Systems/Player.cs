@@ -71,6 +71,7 @@ public class Player
 
     public void Update(float dt, bool thrustUp, bool thrustDown, bool turnLeft, bool turnRight)
     {
+        if (thrustDown) { (turnLeft, turnRight) = (turnRight, turnLeft); }
         if (turnLeft)  RotationVelocity -= RotationSpeed * dt;
         if (turnRight) RotationVelocity += RotationSpeed * dt;
         RotationVelocity *= 0.9f;

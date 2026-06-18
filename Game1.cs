@@ -385,17 +385,19 @@ public class Game1 : Game
                             if (upHit) _selectedConnectionIndex = (_selectedConnectionIndex - 1 + connections.Count) % connections.Count;
                             if (downHit) _selectedConnectionIndex = (_selectedConnectionIndex + 1) % connections.Count;
 
-                            const float JUMP_FUEL_COST = 30f;
-
                             if (keyboard.IsKeyDown(Keys.Enter) && _prevKeyboard.IsKeyUp(Keys.Enter))
                             {
                                 string targetId = connections[_selectedConnectionIndex];
                                 var targetSys = _galaxy.FindSystemById(targetId);
                                 if (targetSys != null)
                                 {
-                                    if (_player.Fuel >= JUMP_FUEL_COST)
+                                    float dist = Vector2.Distance(
+                                        _player.Position,
+                                        new Vector2(targetSys.X, targetSys.Y));
+                                    float fuelCost = MathF.Max(25f, dist * 0.015f);
+                                    if (_player.Fuel >= fuelCost)
                                     {
-                                        _player.Fuel -= JUMP_FUEL_COST;
+                                        _player.Fuel -= fuelCost;
                                         _travelDestId = targetId;
                                         _travelStartPos = _player.Position;
                                         _travelEndPos = new Vector2(targetSys.X, targetSys.Y);
@@ -406,18 +408,18 @@ public class Game1 : Game
                                     }
                                     else
                                     {
-                                        SetStatus($"Need {JUMP_FUEL_COST} fuel (have {_player.Fuel}). [Y] Exchange 1/4 HP for 1/4 fuel");
+                                        SetStatus($"Need {fuelCost:F0} fuel (have {_player.Fuel}). [Y] Exchange 1/4 HP for 1/4 fuel");
                                     }
                                 }
                             }
 
                             // Fuel exchange in galaxy view
-                            if (_player.Fuel < JUMP_FUEL_COST && _player.Health > _player.MaxHealth / 4 &&
+                            if (_player.Health > _player.MaxHealth / 4 &&
                                 keyboard.IsKeyDown(Keys.Y) && _prevKeyboard.IsKeyUp(Keys.Y))
                             {
                                 _player.Health -= _player.MaxHealth / 4;
                                 _player.Fuel += _player.MaxFuel / 4;
-                                SetStatus($"Exchanged HP for fuel. Fuel: {_player.Fuel}");
+                                SetStatus($"Exchanged HP for fuel. Fuel: {_player.Fuel:F0}");
                             }
                         }
 

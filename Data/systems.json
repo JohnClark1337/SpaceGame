@@ -674,7 +674,7 @@
       "radius": 50,
       "color": "FFCC44",
       "description": "A yellow giant in Gemini. Pollux is a prosperous Federation system known for its universities.",
-      "connections": ["castor"],
+      "connections": ["castor", "trigor_alpha"],
       "services": ["fuel", "repair", "market", "upgrades"],
       "hostility": 0,
       "faction": "Terran Federation",
@@ -825,6 +825,98 @@
       "economy": {
         "production": { "u": 35, "he3": 30, "h": 60, "fe": 50, "al": 30, "ti": 20 },
         "demand": { "h": 2.0, "he3": 1.5, "fe": 1.8, "cu": 1.5, "al": 1.5, "ti": 1.8, "c": 2.0, "si": 1.8, "u": 1.5, "ag": 0.3, "au": 0.3 }
+      }
+    },
+    {
+      "id": "trigor_alpha",
+      "name": "Trigor Alpha",
+      "x": 8500,
+      "y": -800,
+      "radius": 32,
+      "color": "FF4422",
+      "description": "The gateway to the Trigor Empire. Heavily patrolled by Trigor warships.",
+      "connections": ["pollux", "trigor"],
+      "services": ["fuel"],
+      "hostility": 5,
+      "faction": "Trigor Empire",
+      "starRadius": 700,
+      "planets": [
+        { "name": "Trigor Alpha I", "orbitRadius": 5400, "radius": 720, "color": "884433", "orbitSpeed": 0.01 }
+      ],
+      "station": { "name": "Alpha Gate", "orbitRadius": 3600, "orbitSpeed": 0.0015 },
+      "economy": {
+        "production": { "fe": 100, "cu": 80, "ti": 100, "u": 40, "al": 60 },
+        "demand": { "h": 2.5, "he3": 2.0, "c": 2.0, "si": 2.0, "fe": 1.5, "cu": 1.5, "al": 1.5, "ti": 1.0, "u": 1.0 }
+      }
+    },
+    {
+      "id": "trigor",
+      "name": "Trigor",
+      "x": 10000,
+      "y": -800,
+      "radius": 55,
+      "color": "FF2200",
+      "description": "The throneworld of the Trigor Empire. A massive industrial fortress-system bristling with orbital defenses.",
+      "connections": ["trigor_alpha", "trigor_beta", "trigor_gamma"],
+      "services": ["fuel", "repair", "market", "upgrades"],
+      "hostility": 5,
+      "faction": "Trigor Empire",
+      "starRadius": 1100,
+      "planets": [
+        { "name": "Trigor I", "orbitRadius": 3200, "radius": 540, "color": "774433", "orbitSpeed": 0.015 },
+        { "name": "Trigor II", "orbitRadius": 5200, "radius": 1350, "color": "884422", "orbitSpeed": 0.01 },
+        { "name": "Trigor III", "orbitRadius": 7500, "radius": 1080, "color": "774422", "orbitSpeed": 0.0075 },
+        { "name": "Trigor IV", "orbitRadius": 9800, "radius": 900, "color": "665533", "orbitSpeed": 0.005 },
+        { "name": "Trigor V", "orbitRadius": 12500, "radius": 720, "color": "555544", "orbitSpeed": 0.00375 },
+        { "name": "Trigor VI", "orbitRadius": 15500, "radius": 630, "color": "444444", "orbitSpeed": 0.0025 },
+        { "name": "Trigor VII", "orbitRadius": 19000, "radius": 450, "color": "333333", "orbitSpeed": 0.001875 }
+      ],
+      "station": { "name": "Imperial Citadel", "orbitRadius": 5600, "orbitSpeed": 0.000625 },
+      "economy": {
+        "production": { "fe": 200, "cu": 150, "al": 160, "ti": 200, "u": 80, "si": 100, "c": 80, "h": 40, "he3": 50, "nd": 40, "li": 60, "ag": 50, "au": 30, "pt": 25 },
+        "demand": { "h": 3.0, "he3": 2.5, "c": 3.0, "si": 3.0, "fe": 2.0, "cu": 2.0, "al": 2.0, "ti": 1.5, "u": 1.5, "li": 2.0, "ag": 2.0, "au": 1.5, "pt": 1.5, "nd": 2.0 }
+      }
+    },
+    {
+      "id": "trigor_beta",
+      "name": "Trigor Beta",
+      "x": 11500,
+      "y": -800,
+      "radius": 30,
+      "color": "FF5533",
+      "description": "A Trigor military outpost guarding the eastern approaches to the Empire.",
+      "connections": ["trigor"],
+      "services": ["fuel", "repair"],
+      "hostility": 5,
+      "faction": "Trigor Empire",
+      "starRadius": 650,
+      "planets": [
+        { "name": "Trigor Beta I", "orbitRadius": 4800, "radius": 630, "color": "774422", "orbitSpeed": 0.008125 }
+      ],
+      "station": { "name": "Beta Garrison", "orbitRadius": 3200, "orbitSpeed": 0.00125 },
+      "economy": {
+        "production": { "fe": 80, "cu": 60, "ti": 80, "u": 30, "al": 40 },
+        "demand": { "h": 2.5, "he3": 2.0, "c": 2.5, "si": 2.5, "fe": 1.5, "cu": 1.5, "al": 1.5, "ti": 1.0, "u": 1.0 }
+      }
+    },
+    {
+      "id": "trigor_gamma",
+      "name": "Trigor Gamma",
+      "x": 10000,
+      "y": -2300,
+      "radius": 28,
+      "color": "CC3311",
+      "description": "A penal colony orbiting a dim red star. Faint distress signals are picked up near the lower atmosphere.",
+      "connections": ["trigor"],
+      "services": [],
+      "hostility": 5,
+      "faction": "Trigor Empire",
+      "starRadius": 500,
+      "planets": [],
+      "station": null,
+      "economy": {
+        "production": { "u": 60, "he3": 40, "h": 30, "fe": 20 },
+        "demand": { "h": 3.0, "he3": 2.5, "fe": 2.5, "cu": 2.5, "al": 2.5, "ti": 2.5, "c": 3.0, "si": 3.0, "u": 2.0 }
       }
     }
   ]
