@@ -23,9 +23,9 @@
     </None>
   </ItemGroup>
 
-  <!-- Build MGCB content before build -->
-  <Target Name="BuildMGCB" BeforeTargets="Build">
-    <Exec Command="mgcb Content.mgcb" WorkingDirectory="Content" />
+  <!-- Build MGCB content before build (optional: install dotnet-mgcb globally if modifying spritefonts) -->
+  <Target Name="BuildMGCB" BeforeTargets="Build" Condition="'$(DesignTimeBuild)' != 'true'">
+    <Exec Command="mgcb Content.mgcb" WorkingDirectory="Content" ContinueOnError="true" />
   </Target>
 
 </Project>
