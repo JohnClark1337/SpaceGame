@@ -13,6 +13,7 @@
     { "id": "ag", "name": "Silver", "symbol": "Ag", "category": "precious", "description": "Precious metal used in advanced circuitry and optics.", "basePrice": 60, "volume": 1 },
     { "id": "pt", "name": "Platinum", "symbol": "Pt", "category": "precious", "description": "Rare catalyst metal with high industrial demand.", "basePrice": 120, "volume": 1 },
     { "id": "au", "name": "Gold", "symbol": "Au", "category": "precious", "description": "Corrosion-resistant precious metal for critical electronics.", "basePrice": 90, "volume": 1 },
-    { "id": "nd", "name": "Neodymium", "symbol": "Nd", "category": "rare", "description": "Rare-earth element essential for powerful magnets.", "basePrice": 75, "volume": 1 }
+    { "id": "nd", "name": "Neodymium", "symbol": "Nd", "category": "rare", "description": "Rare-earth element essential for powerful magnets.", "basePrice": 75, "volume": 1 },
+    { "id": "missile_ammo", "name": "Missile Ammo", "symbol": "M", "category": "ammo", "description": "Standard guided missile munitions.", "basePrice": 25, "volume": 1 }
   ]
 }

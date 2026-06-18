@@ -10,6 +10,7 @@ public class Galaxy
     public List<UpgradeData> AllUpgrades { get; private set; } = new();
     public List<ResourceDef> AllResources { get; private set; } = new();
     public List<EquipmentDef> AllEquipment { get; private set; } = new();
+    public List<ConsumableDef> AllConsumables { get; private set; } = new();
     public List<QuestData> ActiveQuests { get; private set; } = new();
     public List<QuestData> AvailableQuests { get; private set; } = new();
     public Economy Economy { get; private set; } = null!;
@@ -57,6 +58,19 @@ public class Galaxy
         string equipmentJson = LoadJson("equipment.json");
         if (!string.IsNullOrEmpty(equipmentJson))
             AllEquipment = JsonSerializer.Deserialize<EquipmentData>(equipmentJson, JsonOpts)?.Equipment ?? new();
+
+        AllConsumables = new List<ConsumableDef>
+        {
+            new ConsumableDef
+            {
+                Id = "energy_canister",
+                Name = "Energy Canister",
+                Description = "Refuels the ship by 50%",
+                Cost = 50,
+                EffectType = "fuel_refill",
+                EffectValue = 0.2f
+            }
+        };
 
         AvailableQuests = new List<QuestData>(AllQuests);
         Economy = new Economy(this);
@@ -112,6 +126,14 @@ public class Galaxy
         player.Credits += quest.RewardCredits;
         if (quest.RewardUpgrade != null && !player.OwnedUpgrades.Contains(quest.RewardUpgrade))
             player.OwnedUpgrades.Add(quest.RewardUpgrade);
+        if (quest.RewardEquipment != null)
+        {
+            var existing = player.UnequippedEquipment.FirstOrDefault(e => e.Id == quest.RewardEquipment);
+            if (existing != null)
+                existing.Quantity++;
+            else
+                player.UnequippedEquipment.Add(new InventoryEntry { Id = quest.RewardEquipment, Quantity = 1 });
+        }
         if (quest.TargetItem != null)
             player.QuestItems.RemoveAll(qi => qi.Id == quest.TargetItem);
         player.CompletedQuests.Add(quest.Id);
@@ -143,9 +165,13 @@ public class Galaxy
     public EquipmentDef? FindEquipment(string id) =>
         AllEquipment.FirstOrDefault(e => e.Id == id);
 
+    public ConsumableDef? FindConsumable(string id) =>
+        AllConsumables.FirstOrDefault(c => c.Id == id);
+
     public List<EquipmentDef> GetAvailableEquipmentForSystem(string systemId, Player player) =>
         AllEquipment
             .Where(e => e.Location == systemId)
             .Where(e => !player.Equipment.ContainsValue(e.Id))
+            .Where(e => !player.UnequippedEquipment.Any(u => u.Id == e.Id))
             .ToList();
 }

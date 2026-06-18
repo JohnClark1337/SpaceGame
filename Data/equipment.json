@@ -99,6 +99,16 @@
       "effectValue": 1.0,
       "cost": 500,
       "location": "draco"
+    },
+    {
+      "id": "efficient_engine",
+      "name": "Efficient Engine",
+      "description": "Reduces fuel consumption by 20% during flight",
+      "slot": "engine",
+      "effectType": "engine_efficiency",
+      "effectValue": 0.5,
+      "cost": 0,
+      "location": ""
     }
   ]
 }

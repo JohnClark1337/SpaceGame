@@ -11,6 +11,7 @@ public class QuestData
     public int TargetCount { get; set; } = 1;
     public int RewardCredits { get; set; }
     public string? RewardUpgrade { get; set; }
+    public string? RewardEquipment { get; set; }
     public string? GiverSystem { get; set; }
 }
 

@@ -34,6 +34,7 @@ public class SystemScene
     private int _dockedTab;
     private int _dockedQuestSelection;
     private int _dockedMarketSelection;
+    private int _dockedUpgradeSelection;
     private bool _nearEdge;
     private bool _nearPlanet;
     private bool _initialized;
@@ -77,10 +78,27 @@ public class SystemScene
         public bool IsPlayerBullet;
     }
     private List<Bullet> _bullets = new();
-    private float _playerShootCooldown;
-    private const float PLAYER_SHOOT_COOLDOWN = 0.25f;
     private const float BULLET_SPEED = 500f;
     private const float BULLET_LIFETIME = 1.5f;
+
+    private struct Missile
+    {
+        public Vector2 Position;
+        public Vector2 Velocity;
+        public float Lifetime;
+        public int TargetIndex;
+    }
+    private List<Missile> _missiles = new();
+    private float _weaponCooldown;
+    private int _activeWeapon; // 0=base, 1=laser, 2=missile
+
+    private struct LaserBeam
+    {
+        public Vector2 Start;
+        public Vector2 End;
+        public float Timer;
+    }
+    private List<LaserBeam> _laserBeams = new();
 
     private enum AiState { Idle, Orbit, Attack, Evade }
     private struct EnemyShip
@@ -128,6 +146,9 @@ public class SystemScene
         _exploding = false;
         _debris.Clear();
         _enemyExplosions.Clear();
+        _missiles.Clear();
+        _laserBeams.Clear();
+        _bullets.Clear();
     }
 
     private void Initialize()
@@ -241,6 +262,7 @@ public class SystemScene
     {
         Initialize();
 
+        KeyboardState prevKb = _prevKeyboard;
         float t = (float)_game.GameTime.TotalGameTime.TotalSeconds;
 
         if (_gameOver)
@@ -249,7 +271,7 @@ public class SystemScene
             {
                 Respawn();
             }
-            else if (JustPressed(keyboard, Keys.Enter))
+            else if (keyboard.IsKeyDown(Keys.Enter) && prevKb.IsKeyUp(Keys.Enter))
             {
                 _gameOver = false;
                 _game.ShowNewGameMenu();
@@ -404,7 +426,7 @@ public class SystemScene
             if (speed > 10f && _player.Fuel > 0)
             {
                 float fuelRate = 3f;
-                _player.Fuel = MathF.Max(0, _player.Fuel - (speed / _player.MaxSpeed) * fuelRate * dt);
+                _player.Fuel = MathF.Max(0, _player.Fuel - (speed / _player.MaxSpeed) * fuelRate * dt * _player.FuelEfficiency);
             }
 
             // Temperature (non-linear: slow rise far away, spikes near star)
@@ -478,7 +500,7 @@ public class SystemScene
             if (_lifepodActive)
             {
                 float podDist = Vector2.Distance(_player.Position, new Vector2(_lifepod.X, _lifepod.Y));
-                if (podDist < 100f && JustPressed(keyboard, Keys.E))
+                if (podDist < 100f && keyboard.IsKeyDown(Keys.E) && prevKb.IsKeyUp(Keys.E))
                 {
                     _player.QuestItems.Add(new InventoryEntry { Id = "princess_lifepod", Quantity = 1 });
                     _lifepodActive = false;
@@ -488,7 +510,7 @@ public class SystemScene
             float distToStation = Vector2.Distance(_player.Position, new Vector2(_station.X, _station.Y));
             if (distToStation < 150f)
             {
-                if (JustPressed(keyboard, Keys.E))
+                if (keyboard.IsKeyDown(Keys.E) && prevKb.IsKeyUp(Keys.E))
                 {
                     _docked = true;
                     _player.Fuel = _player.MaxFuel;
@@ -497,12 +519,19 @@ public class SystemScene
             }
 
             // Fuel exchange prompt (when out of fuel)
-            if (_player.Fuel <= 0 && _player.Health > _player.MaxHealth / 4 && !_exploding && !_gameOver)
+            if (_player.Fuel <= 0 && !_exploding && !_gameOver)
             {
-                if (JustPressed(keyboard, Keys.Y))
+                if (!_docked)
                 {
-                    _player.Health -= _player.MaxHealth / 4;
-                    _player.Fuel += _player.MaxFuel / 4;
+                    if (keyboard.IsKeyDown(Keys.Y) && prevKb.IsKeyUp(Keys.Y) && _player.Health > _player.MaxHealth / 4)
+                    {
+                        _player.Health -= _player.MaxHealth / 4;
+                        _player.Fuel += _player.MaxFuel / 4;
+                    }
+                    if (keyboard.IsKeyDown(Keys.C) && prevKb.IsKeyUp(Keys.C) && _player.HasEnergyCanister)
+                    {
+                        _player.UseEnergyCanister();
+                    }
                 }
             }
 
@@ -519,20 +548,202 @@ public class SystemScene
                 _particles[i] = p;
             }
 
+            // Determine available weapons
+            bool hasLaser = false;
+            bool hasMissile = false;
+            for (int wi = 0; wi < 2; wi++)
+            {
+                string? equipId = _player.GetEquippedWeapon(wi);
+                if (equipId == null) continue;
+                var def = _game.Galaxy.FindEquipment(equipId);
+                if (def == null) continue;
+                if (def.EffectType == "weapon_damage") hasLaser = true;
+                if (def.EffectType == "weapon_missile") hasMissile = true;
+            }
+            // Clamp active weapon to available (safety for equipment changes)
+            if (_activeWeapon == 1 && !hasLaser) _activeWeapon = 0;
+            if (_activeWeapon == 2 && !hasMissile) _activeWeapon = 0;
+
+            // --- Weapon switching (number keys) ---
+            if (keyboard.IsKeyDown(Keys.D1) && prevKb.IsKeyUp(Keys.D1))
+                _activeWeapon = 0;
+            if (keyboard.IsKeyDown(Keys.D2) && prevKb.IsKeyUp(Keys.D2) && hasLaser)
+                _activeWeapon = 1;
+            if (keyboard.IsKeyDown(Keys.D3) && prevKb.IsKeyUp(Keys.D3) && hasMissile)
+                _activeWeapon = 2;
+
             // --- Combat: player shooting ---
             if (!_exploding && !_docked)
             {
-                _playerShootCooldown -= dt;
-                if (keyboard.IsKeyDown(Keys.Space) && _playerShootCooldown <= 0f)
+                _weaponCooldown -= dt;
+                bool spaceHeld = keyboard.IsKeyDown(Keys.Space);
+                bool spacePressed = keyboard.IsKeyDown(Keys.Space) && prevKb.IsKeyUp(Keys.Space);
+                float muzzleLen = 16f;
+                var muzzlePos = _player.Position + Vector2.FromAngle(_player.Angle) * muzzleLen;
+
+                if (_activeWeapon == 0)
                 {
-                    _playerShootCooldown = PLAYER_SHOOT_COOLDOWN;
-                    _bullets.Add(new Bullet
+                    // Base weapon (bullet)
+                    if (spacePressed && _weaponCooldown <= 0f)
                     {
-                        Position = _player.Position,
-                        Velocity = Vector2.FromAngle(_player.Angle) * BULLET_SPEED + _player.Velocity * 0.5f,
-                        Lifetime = BULLET_LIFETIME,
-                        IsPlayerBullet = true
-                    });
+                        _weaponCooldown = 0.25f;
+                        _bullets.Add(new Bullet
+                        {
+                            Position = muzzlePos,
+                            Velocity = Vector2.FromAngle(_player.Angle) * BULLET_SPEED + _player.Velocity * 0.5f,
+                            Lifetime = BULLET_LIFETIME,
+                            IsPlayerBullet = true
+                        });
+                    }
+                }
+                else if (_activeWeapon == 1 && hasLaser)
+                {
+                    // Laser beam - fires forward from ship nose
+                    if (spaceHeld && _weaponCooldown <= 0f && _player.Fuel > 0)
+                    {
+                        _weaponCooldown = 0.1f;
+                        _player.Fuel = MathF.Max(0, _player.Fuel - 1.667f * dt);
+
+                        float range = 18f;
+                        Vector2 beamEnd = muzzlePos + Vector2.FromAngle(_player.Angle) * range;
+
+                        _laserBeams.Add(new LaserBeam
+                        {
+                            Start = muzzlePos,
+                            End = beamEnd,
+                            Timer = 0.08f
+                        });
+
+                        // Check line-circle collision with enemies
+                        float beamDmg = 1.5f;
+                        for (int ei = _enemies.Count - 1; ei >= 0; ei--)
+                        {
+                            var e = _enemies[ei];
+                            if (LineCircleIntersect(muzzlePos, beamEnd, e.Position, 16f))
+                            {
+                                e.Health -= beamDmg;
+                                if (e.Health <= 0f)
+                                {
+                                    _enemyExplosions.Add(new EnemyExplosion
+                                    {
+                                        Position = e.Position,
+                                        Timer = 0f,
+                                        Duration = 0.6f
+                                    });
+                                    _enemies.RemoveAt(ei);
+                                }
+                                else
+                                {
+                                    _enemies[ei] = e;
+                                }
+                            }
+                        }
+                    }
+                }
+                else if (_activeWeapon == 2 && hasMissile)
+                {
+                    // Missile launcher
+                    if (spacePressed && _weaponCooldown <= 0f)
+                    {
+                        if (_player.ConsumeMissileAmmo())
+                        {
+                            _weaponCooldown = 1.5f;
+
+                            int targetIdx = -1;
+                            float closest = 650f;
+                            for (int ei = 0; ei < _enemies.Count; ei++)
+                            {
+                                float md = Vector2.Distance(muzzlePos, _enemies[ei].Position);
+                                if (md < closest)
+                                {
+                                    closest = md;
+                                    targetIdx = ei;
+                                }
+                            }
+
+                            _missiles.Add(new Missile
+                            {
+                                Position = muzzlePos,
+                                Velocity = Vector2.FromAngle(_player.Angle) * 200f + _player.Velocity * 0.5f,
+                                Lifetime = 3f,
+                                TargetIndex = targetIdx
+                            });
+                        }
+                    }
+                }
+            }
+
+            // Update laser beams
+            for (int i = _laserBeams.Count - 1; i >= 0; i--)
+            {
+                var lb = _laserBeams[i];
+                lb.Timer -= dt;
+                if (lb.Timer <= 0f)
+                    _laserBeams.RemoveAt(i);
+                else
+                    _laserBeams[i] = lb;
+            }
+
+            // Update missiles
+            for (int i = _missiles.Count - 1; i >= 0; i--)
+            {
+                var m = _missiles[i];
+                m.Lifetime -= dt;
+                bool remove = false;
+
+                if (m.Lifetime <= 0f)
+                    remove = true;
+
+                // Homing toward target
+                if (!remove && m.TargetIndex >= 0 && m.TargetIndex < _enemies.Count)
+                {
+                    var target = _enemies[m.TargetIndex];
+                    Vector2 toTarget = target.Position - m.Position;
+                    float homingDist = toTarget.Length();
+                    if (homingDist > 1f)
+                    {
+                        Vector2 dir = toTarget.Normalized();
+                        m.Velocity += dir * dt * 150f;
+                        float maxMSpeed = 300f;
+                        if (m.Velocity.Length() > maxMSpeed)
+                            m.Velocity = m.Velocity.Normalized() * maxMSpeed;
+                    }
+
+                    // Check collision with target
+                    if (homingDist < 20f)
+                    {
+                        target.Health -= 5f;
+                        if (target.Health <= 0f)
+                        {
+                            _enemyExplosions.Add(new EnemyExplosion
+                            {
+                                Position = target.Position,
+                                Timer = 0f,
+                                Duration = 0.6f
+                            });
+                            _enemies.RemoveAt(m.TargetIndex);
+                        }
+                        else
+                        {
+                            _enemies[m.TargetIndex] = target;
+                        }
+                        remove = true;
+                    }
+                }
+                else if (!remove)
+                {
+                    // No target - drift
+                    m.Velocity *= 0.98f;
+                }
+
+                if (!remove)
+                {
+                    m.Position += m.Velocity * dt;
+                    _missiles[i] = m;
+                }
+                else
+                {
+                    _missiles.RemoveAt(i);
                 }
             }
 
@@ -688,17 +899,35 @@ public class SystemScene
                 var resources = _game.Galaxy.AllResources
                     .Where(r => economy.HasResource(_system.Id, r.Id))
                     .ToList();
+                int marketItemCount = resources.Count + 1; // +1 for energy canister
                 bool backDocked = keyboard.IsKeyDown(Keys.Back) && _prevKeyboard.IsKeyUp(Keys.Back);
                 if (downDocked)
-                    _dockedMarketSelection = (_dockedMarketSelection + 1) % Math.Max(1, resources.Count);
+                    _dockedMarketSelection = (_dockedMarketSelection + 1) % Math.Max(1, marketItemCount);
                 if (upDocked)
-                    _dockedMarketSelection = (_dockedMarketSelection - 1 + Math.Max(1, resources.Count)) % Math.Max(1, resources.Count);
-                if (enterDocked && resources.Count > 0)
+                    _dockedMarketSelection = (_dockedMarketSelection - 1 + Math.Max(1, marketItemCount)) % Math.Max(1, marketItemCount);
+                if (enterDocked && marketItemCount > 0)
                 {
-                    var res = resources[_dockedMarketSelection];
-                    economy.Buy(_player, _system.Id, res.Id, 1);
+                    if (_dockedMarketSelection < resources.Count)
+                    {
+                        var res = resources[_dockedMarketSelection];
+                        economy.Buy(_player, _system.Id, res.Id, 1);
+                    }
+                    else
+                    {
+                        // Buy energy canister
+                        int canisterCost = 50;
+                        if (_player.Credits >= canisterCost && _player.UsedCargo < _player.CargoCapacity)
+                        {
+                            _player.Credits -= canisterCost;
+                            var existing = _player.Consumables.FirstOrDefault(c => c.Id == "energy_canister");
+                            if (existing != null)
+                                existing.Quantity++;
+                            else
+                                _player.Consumables.Add(new InventoryEntry { Id = "energy_canister", Quantity = 1 });
+                        }
+                    }
                 }
-                if (backDocked && resources.Count > 0)
+                if (backDocked && resources.Count > 0 && _dockedMarketSelection < resources.Count)
                 {
                     var res = resources[_dockedMarketSelection];
                     economy.Sell(_player, _system.Id, res.Id, 1);
@@ -707,6 +936,42 @@ public class SystemScene
             else if (_dockedTab == 1)
             {
                 // Upgrades tab
+                var upgrades = _game.GetUpgradesForSystem(_system.Id);
+                var equipment = _game.Galaxy.GetAvailableEquipmentForSystem(_system.Id, _player);
+                int upgradeCount = upgrades.Count;
+                int equipCount = equipment.Count;
+                int totalItems = upgradeCount + equipCount;
+                if (totalItems > 0)
+                {
+                    if (downDocked)
+                        _dockedUpgradeSelection = (_dockedUpgradeSelection + 1) % totalItems;
+                    if (upDocked)
+                        _dockedUpgradeSelection = (_dockedUpgradeSelection - 1 + totalItems) % totalItems;
+
+                    if (enterDocked)
+                    {
+                        if (_dockedUpgradeSelection < upgradeCount)
+                        {
+                            var up = upgrades[_dockedUpgradeSelection];
+                            if (_player.Credits >= up.Cost)
+                            {
+                                _player.Credits -= up.Cost;
+                                if (!_player.OwnedUpgrades.Contains(up.Id))
+                                    _player.OwnedUpgrades.Add(up.Id);
+                            }
+                        }
+                        else
+                        {
+                            int ei = _dockedUpgradeSelection - upgradeCount;
+                            var eq = equipment[ei];
+                            if (_player.Credits >= eq.Cost)
+                            {
+                                _player.Credits -= eq.Cost;
+                                _player.UnequippedEquipment.Add(new InventoryEntry { Id = eq.Id, Quantity = 1 });
+                            }
+                        }
+                    }
+                }
             }
             else
             {
@@ -878,6 +1143,79 @@ public class SystemScene
             sb.Draw(pixel, new Microsoft.Xna.Framework.Rectangle((int)bx, (int)by, 4, 4), bColor * 0.9f);
         }
 
+        // Laser beams (thick red lines)
+        foreach (var lb in _laserBeams)
+        {
+            float lsx = center.X + (lb.Start.X - _player.Position.X) * ZOOM;
+            float lsy = center.Y + (lb.Start.Y - _player.Position.Y) * ZOOM;
+            float lex = center.X + (lb.End.X - _player.Position.X) * ZOOM;
+            float ley = center.Y + (lb.End.Y - _player.Position.Y) * ZOOM;
+            float alpha = lb.Timer / 0.08f;
+            Color beamColor = new Color(255, 40, 0) * alpha;
+            // Thick red beam: three parallel lines
+            float beamW = 3f;
+            float bdx = lex - lsx;
+            float bdy = ley - lsy;
+            float blen = MathF.Sqrt(bdx * bdx + bdy * bdy);
+            if (blen > 1f)
+            {
+                float bnx = bdx / blen;
+                float bny = bdy / blen;
+                float pnx = -bny;
+                float pny = bnx;
+                for (int li = -1; li <= 1; li++)
+                {
+                    float ox = pnx * li * beamW;
+                    float oy = pny * li * beamW;
+                    DrawLine(sb, pixel, lsx + ox, lsy + oy, lex + ox, ley + oy, beamColor);
+                }
+            }
+        }
+
+        // Missiles
+        foreach (var m in _missiles)
+        {
+            float mx = center.X + (m.Position.X - _player.Position.X) * ZOOM;
+            float my = center.Y + (m.Position.Y - _player.Position.Y) * ZOOM;
+            float angle = MathF.Atan2(m.Velocity.Y, m.Velocity.X);
+            float cosA = MathF.Cos(angle);
+            float sinA = MathF.Sin(angle);
+            float fx = cosA, fy = sinA;
+            float px = -sinA, py = cosA;
+
+            // Body rectangle dimensions (screen pixels)
+            float bodyLen = 14f, bodyW = 3f, halfW = bodyW / 2f;
+
+            // Body corners
+            float bcx = mx - fx * bodyLen * 0.5f;
+            float bcy = my - fy * bodyLen * 0.5f;
+            float bxl = bcx - px * halfW, byl = bcy - py * halfW;
+            float bxr = bcx + px * halfW, byr = bcy + py * halfW;
+            float fcx = mx + fx * bodyLen * 0.5f;
+            float fcy = my + fy * bodyLen * 0.5f;
+            float fxl = fcx - px * halfW, fyl = fcy - py * halfW;
+            float fxr = fcx + px * halfW, fyr = fcy + py * halfW;
+
+            // Body (left edge, right edge, back edge)
+            DrawLine(sb, pixel, bxl, byl, fxl, fyl, Color.Silver);
+            DrawLine(sb, pixel, bxr, byr, fxr, fyr, Color.Silver);
+            DrawLine(sb, pixel, bxl, byl, bxr, byr, Color.Silver);
+
+            // Nose cone (red triangle at front)
+            float noseLen = 5f;
+            float ntx = fcx + fx * noseLen;
+            float nty = fcy + fy * noseLen;
+            DrawLine(sb, pixel, fxl, fyl, ntx, nty, Color.Red);
+            DrawLine(sb, pixel, fxr, fyr, ntx, nty, Color.Red);
+
+            // Flame (orange flickering at back)
+            float flameLen = 6f + (float)Random.Shared.NextDouble() * 4f;
+            float flx = bcx - fx * flameLen;
+            float fly = bcy - fy * flameLen;
+            DrawLine(sb, pixel, bxl, byl, flx, fly, Color.Orange);
+            DrawLine(sb, pixel, bxr, byr, flx, fly, Color.Orange);
+        }
+
         // Enemy explosions
         foreach (var ex in _enemyExplosions)
         {
@@ -918,7 +1256,44 @@ public class SystemScene
         if (_docked)
             DrawDockedMenu(sb, pixel, font, titleFont, screenW, screenH, t);
         else
+        {
             DrawSystemHUD(sb, font, screenW, screenH, center, sx, sy);
+
+            // Weapon indicator (top of screen)
+            bool hasLaser = false, hasMissile = false;
+            for (int wi = 0; wi < 2; wi++)
+            {
+                string? eid = _player.GetEquippedWeapon(wi);
+                if (eid == null) continue;
+                var edef = _game.Galaxy.FindEquipment(eid);
+                if (edef == null) continue;
+                if (edef.EffectType == "weapon_damage") hasLaser = true;
+                if (edef.EffectType == "weapon_missile") hasMissile = true;
+            }
+
+            string[] wepNames = { "Base", hasLaser ? "Laser" : "", hasMissile ? "Missile" : "" };
+            float wepX = 20f;
+            float wepY = 40f;
+            for (int i = 0; i < 3; i++)
+            {
+                if (i == 1 && !hasLaser) continue;
+                if (i == 2 && !hasMissile) continue;
+                string label = $"[{i + 1}] {wepNames[i]}";
+                var sz = font.MeasureString(label);
+                Color wepColor = i == _activeWeapon ? Color.White : Color.Gray * 0.7f;
+                if (i == _activeWeapon)
+                {
+                    sb.Draw(pixel,
+                        new Microsoft.Xna.Framework.Rectangle((int)wepX - 4, (int)wepY - 2,
+                            (int)sz.X + 8, (int)sz.Y + 4),
+                        new Color(40, 60, 90, 200));
+                    DrawRect(sb, pixel, wepX - 4, wepY - 2, sz.X + 8, sz.Y + 4, Color.LightBlue);
+                }
+                DrawSpacedText(sb, font, label,
+                    new Microsoft.Xna.Framework.Vector2(wepX, wepY), wepColor);
+                wepX += sz.X + 12;
+            }
+        }
 
         // Waypoint arrow
         if (!_docked)
@@ -1041,6 +1416,36 @@ public class SystemScene
             DrawSpacedText(sb, font, fuelStr,
                 new Microsoft.Xna.Framework.Vector2(fbX + fbW / 2 - fuelSize.X / 2, fbY + fbH + 4),
                 Color.Gray * 0.7f);
+
+            // Missile count indicator (to the right of fuel bar)
+            int missX = fbX + fbW + 28;
+            bool hasMissileLauncher = false;
+            string? w0 = _player.GetEquippedWeapon(0);
+            string? w1 = _player.GetEquippedWeapon(1);
+            if (w0 != null)
+            {
+                var def0 = _game.Galaxy.FindEquipment(w0);
+                if (def0 != null && def0.EffectType == "weapon_missile") hasMissileLauncher = true;
+            }
+            if (!hasMissileLauncher && w1 != null)
+            {
+                var def1 = _game.Galaxy.FindEquipment(w1);
+                if (def1 != null && def1.EffectType == "weapon_missile") hasMissileLauncher = true;
+            }
+            if (hasMissileLauncher)
+            {
+                var msLabel = font.MeasureString("MSL");
+                DrawSpacedText(sb, font, "MSL",
+                    new Microsoft.Xna.Framework.Vector2(missX + fbW / 2 - msLabel.X / 2, fbY - 22), Color.Gray * 0.7f);
+
+                int missCount = _player.MissileAmmoCount;
+                string missStr = $"{missCount}";
+                var missSize = font.MeasureString(missStr);
+                Color missColor = missCount > 0 ? Color.Orange : Color.Gray * 0.4f;
+                DrawSpacedText(sb, font, missStr,
+                    new Microsoft.Xna.Framework.Vector2(missX + fbW / 2 - missSize.X / 2, fbY + fbH / 2 - missSize.Y / 2),
+                    missColor);
+            }
         }
 
         // Overheating warning
@@ -1103,7 +1508,7 @@ public class SystemScene
         }
 
         // Fuel exchange prompt (out of fuel)
-        if (_player.Fuel <= 0 && !_exploding && !_gameOver && !_docked && _player.Health > _player.MaxHealth / 4)
+        if (_player.Fuel <= 0 && !_exploding && !_gameOver && !_docked)
         {
             sb.Draw(pixel, new Microsoft.Xna.Framework.Rectangle(0, 0, screenW, screenH),
                 new Color(0, 0, 0, 140));
@@ -1112,13 +1517,27 @@ public class SystemScene
             var msgSize = titleFont.MeasureString(msg);
             float msgX = (screenW - msgSize.X) / 2f;
             DrawSpacedText(sb, titleFont, msg,
-                new Microsoft.Xna.Framework.Vector2(msgX, screenH * 0.38f), new Color(255, 200, 0));
+                new Microsoft.Xna.Framework.Vector2(msgX, screenH * 0.32f), new Color(255, 200, 0));
 
-            string sub = "[Y] Exchange 1/4 HP for 1/4 fuel";
-            var subSize = font.MeasureString(sub);
-            float subX = (screenW - subSize.X) / 2f;
-            DrawSpacedText(sb, font, sub,
-                new Microsoft.Xna.Framework.Vector2(subX, screenH * 0.38f + 50), Color.White);
+            float optY = screenH * 0.38f + 30;
+            if (_player.Health > _player.MaxHealth / 4)
+            {
+                string sub = "[Y] Exchange 1/4 HP for 1/4 fuel";
+                var subSize = font.MeasureString(sub);
+                float subX = (screenW - subSize.X) / 2f;
+                DrawSpacedText(sb, font, sub,
+                    new Microsoft.Xna.Framework.Vector2(subX, optY), Color.White);
+                optY += 28;
+            }
+
+            if (_player.HasEnergyCanister)
+            {
+                string sub2 = "[C] Use Energy Canister";
+                var sub2Size = font.MeasureString(sub2);
+                float sub2X = (screenW - sub2Size.X) / 2f;
+                DrawSpacedText(sb, font, sub2,
+                    new Microsoft.Xna.Framework.Vector2(sub2X, optY), Color.Orange);
+            }
         }
 
         // Training mode label
@@ -1480,35 +1899,111 @@ public class SystemScene
 
             textY += rowH;
         }
+
+        // Separator
+        textY += 8;
+        sb.Draw(pixel, new Microsoft.Xna.Framework.Rectangle(textX, textY, panelW - 40, 1), Color.Gray * 0.3f);
+        textY += 8;
+
+        // Energy canister row
+        bool canBuyCan = _player.Credits >= 50 && _player.UsedCargo < _player.CargoCapacity;
+        bool canSelected = _dockedMarketSelection >= resources.Count;
+        Color canColor = canSelected ? Color.White : Color.LightGray;
+        if (canSelected)
+            sb.Draw(pixel, new Microsoft.Xna.Framework.Rectangle(textX, textY, panelW - 40, rowH - 1),
+                new Color(40, 50, 70));
+        DrawSpacedText(sb, font, canSelected ? ">" : " ",
+            new Microsoft.Xna.Framework.Vector2(textX + cSel, textY), canColor);
+        DrawSpacedText(sb, font, "[Energy Canister]",
+            new Microsoft.Xna.Framework.Vector2(textX + cName, textY), canColor);
+        DrawSpacedText(sb, font, "50cr",
+            new Microsoft.Xna.Framework.Vector2(textX + cBuy, textY), canSelected && canBuyCan ? Color.Lime : canColor);
+        DrawSpacedText(sb, font, "---",
+            new Microsoft.Xna.Framework.Vector2(textX + cSell, textY), Color.Gray * 0.5f);
+        DrawSpacedText(sb, font, "---",
+            new Microsoft.Xna.Framework.Vector2(textX + cStock, textY), Color.Gray * 0.5f);
+        int canQty = _player.Consumables.FirstOrDefault(c => c.Id == "energy_canister")?.Quantity ?? 0;
+        DrawSpacedText(sb, font, canQty > 0 ? $"{canQty}" : "-",
+            new Microsoft.Xna.Framework.Vector2(textX + cCargo, textY), canColor);
+        if (canSelected && canBuyCan)
+            DrawSpacedText(sb, font, "[Enter] Buy",
+                new Microsoft.Xna.Framework.Vector2(textX + cHint, textY), Color.Lime * 0.7f);
     }
 
     private void DrawUpgradesTab(SpriteBatch sb, Texture2D pixel, SpriteFont font, SpriteFont titleFont,
         int textX, int textY, int panelW, int screenW, int screenH, int px, int py)
     {
+        var upgrades = _game.GetUpgradesForSystem(_system.Id);
+        var equipment = _game.Galaxy.GetAvailableEquipmentForSystem(_system.Id, _player);
+        int rowH = 20;
+        int sel = _dockedUpgradeSelection;
+
+        // Upgrades section
         DrawSpacedText(sb, titleFont, "--- Upgrades ---",
             new Microsoft.Xna.Framework.Vector2(textX, textY), Color.Gold);
         textY += 30;
 
-        var upgrades = _game.GetUpgradesForSystem(_system.Id);
-        if (upgrades.Count == 0)
+        if (upgrades.Count > 0)
+        {
+            for (int i = 0; i < upgrades.Count; i++)
+            {
+                var up = upgrades[i];
+                bool selected = sel == i;
+                bool canAfford = _player.Credits >= up.Cost;
+                Color c = selected ? (canAfford ? Color.Yellow : Color.Gray) : (canAfford ? Color.White : Color.Gray * 0.5f);
+                if (selected)
+                    sb.Draw(pixel, new Microsoft.Xna.Framework.Rectangle(textX, textY, panelW - 40, rowH - 1),
+                        new Color(40, 50, 70));
+                DrawSpacedText(sb, font, selected ? ">" : " ",
+                    new Microsoft.Xna.Framework.Vector2(textX, textY), c);
+                DrawSpacedText(sb, font, $"{up.Name} - {up.Cost}cr",
+                    new Microsoft.Xna.Framework.Vector2(textX + 16, textY), c);
+                textY += rowH;
+                DrawSpacedText(sb, font, up.Description,
+                    new Microsoft.Xna.Framework.Vector2(textX + 32, textY), Color.White * 0.4f);
+                textY += 16;
+            }
+        }
+        else
         {
             DrawSpacedText(sb, font, "  None available",
                 new Microsoft.Xna.Framework.Vector2(textX, textY), Color.Gray);
             textY += 24;
         }
+
+        // Equipment section
+        textY += 10;
+        DrawSpacedText(sb, titleFont, "--- Equipment ---",
+            new Microsoft.Xna.Framework.Vector2(textX, textY), Color.Gold);
+        textY += 30;
+
+        if (equipment.Count > 0)
+        {
+            for (int i = 0; i < equipment.Count; i++)
+            {
+                var eq = equipment[i];
+                bool selected = sel == upgrades.Count + i;
+                bool canAfford = _player.Credits >= eq.Cost;
+                Color c = selected ? (canAfford ? Color.Yellow : Color.Gray) : (canAfford ? Color.White : Color.Gray * 0.5f);
+                if (selected)
+                    sb.Draw(pixel, new Microsoft.Xna.Framework.Rectangle(textX, textY, panelW - 40, rowH - 1),
+                        new Color(40, 50, 70));
+                DrawSpacedText(sb, font, selected ? ">" : " ",
+                    new Microsoft.Xna.Framework.Vector2(textX, textY), c);
+                DrawSpacedText(sb, font, $"{eq.Name} - {eq.Cost}cr",
+                    new Microsoft.Xna.Framework.Vector2(textX + 16, textY), c);
+                textY += rowH;
+                string slotLabel = eq.Slot.Substring(0, 1).ToUpper() + eq.Slot.Substring(1);
+                DrawSpacedText(sb, font, $"  [{slotLabel}] {eq.Description}",
+                    new Microsoft.Xna.Framework.Vector2(textX + 32, textY), Color.White * 0.4f);
+                textY += 16;
+            }
+        }
         else
         {
-            foreach (var up in upgrades)
-            {
-                bool canAfford = _player.Credits >= up.Cost;
-                Color c = canAfford ? Color.White : Color.Gray * 0.5f;
-                DrawSpacedText(sb, font, $"  {up.Name} - {up.Cost}cr",
-                    new Microsoft.Xna.Framework.Vector2(textX, textY), c);
-                textY += 18;
-                DrawSpacedText(sb, font, $"    {up.Description}",
-                    new Microsoft.Xna.Framework.Vector2(textX, textY), Color.White * 0.4f);
-                textY += 22;
-            }
+            DrawSpacedText(sb, font, "  None available",
+                new Microsoft.Xna.Framework.Vector2(textX, textY), Color.Gray);
+            textY += 24;
         }
     }
     private void DrawQuestsTab(SpriteBatch sb, Texture2D pixel, SpriteFont font, SpriteFont titleFont,
@@ -1838,6 +2333,8 @@ public class SystemScene
     {
         _player.Resources.Clear();
         _player.QuestItems.Clear();
+        _player.Consumables.Clear();
+        _player.UnequippedEquipment.Clear();
         _player.Equipment.Clear();
 
         var allResources = _game.Galaxy.AllResources;
@@ -1845,12 +2342,34 @@ public class SystemScene
             _player.Resources.Add(new InventoryEntry { Id = r.Id, Quantity = 10 });
 
         var allEquipment = _game.Galaxy.AllEquipment;
+        int weaponSlot = 0;
         foreach (var eq in allEquipment)
         {
-            if (_player.Equipment.ContainsKey(eq.Slot))
-                continue;
-            _player.Equipment[eq.Slot] = eq.Id;
+            if (eq.Slot == "weapon")
+            {
+                if (weaponSlot < 2)
+                {
+                    string key = weaponSlot == 0 ? "weapon1" : "weapon2";
+                    _player.Equipment[key] = eq.Id;
+                    weaponSlot++;
+                }
+            }
+            else if (eq.Slot == "shield")
+                _player.Equipment["shield"] = eq.Id;
+            else if (eq.Slot == "engine")
+                _player.Equipment["engine"] = eq.Id;
+            else if (eq.Slot == "utility")
+            {
+                if (!_player.Equipment.ContainsKey("utility1"))
+                    _player.Equipment["utility1"] = eq.Id;
+                else if (!_player.Equipment.ContainsKey("utility2"))
+                    _player.Equipment["utility2"] = eq.Id;
+            }
         }
+
+        // Add extra weapons to UnequippedEquipment for practice
+        _player.UnequippedEquipment.Add(new InventoryEntry { Id = "laser_cannon_mk1", Quantity = 1 });
+        _player.UnequippedEquipment.Add(new InventoryEntry { Id = "missile_launcher", Quantity = 1 });
 
         if (!_player.QuestItems.Any(q => q.Id == "princess_lifepod"))
             _player.QuestItems.Add(new InventoryEntry { Id = "princess_lifepod", Quantity = 1 });
@@ -1987,6 +2506,21 @@ public class SystemScene
             if (velDot > 0f)
                 e.Velocity -= dir * velDot * 1.5f;
         }
+    }
+
+    private static bool LineCircleIntersect(Vector2 lineStart, Vector2 lineEnd, Vector2 circleCenter, float circleRadius)
+    {
+        Vector2 d = lineEnd - lineStart;
+        Vector2 f = circleCenter - lineStart;
+        float a = d.X * d.X + d.Y * d.Y;
+        float b = 2f * (f.X * d.X + f.Y * d.Y);
+        float c = f.X * f.X + f.Y * f.Y - circleRadius * circleRadius;
+        float disc = b * b - 4f * a * c;
+        if (disc < 0f) return false;
+        disc = MathF.Sqrt(disc);
+        float t1 = (-b - disc) / (2f * a);
+        float t2 = (-b + disc) / (2f * a);
+        return (t1 >= 0f && t1 <= 1f) || (t2 >= 0f && t2 <= 1f) || (t1 < 0f && t2 > 1f);
     }
 
     private static void DrawLine(SpriteBatch sb, Texture2D pixel, float x1, float y1, float x2, float y2, Color color)

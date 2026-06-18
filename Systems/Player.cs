@@ -20,6 +20,8 @@ public class Player
 
     public List<InventoryEntry> Resources { get; set; } = new();
     public List<InventoryEntry> QuestItems { get; set; } = new();
+    public List<InventoryEntry> Consumables { get; set; } = new();
+    public List<InventoryEntry> UnequippedEquipment { get; set; } = new();
     public Dictionary<string, string> Equipment { get; set; } = new(); // slot -> equipmentId
     public int CargoCapacity { get; set; } = 100;
 
@@ -62,6 +64,56 @@ public class Player
                 total += entry.Quantity;
             return total;
         }
+    }
+
+    public bool HasEnergyCanister => Consumables.Any(c => c.Id == "energy_canister" && c.Quantity > 0);
+
+    public float FuelEfficiency
+    {
+        get
+        {
+            if (Equipment.TryGetValue("engine", out var id) && id == "efficient_engine")
+                return 0.8f;
+            return 1f;
+        }
+    }
+
+    public bool UseEnergyCanister()
+    {
+        var entry = Consumables.FirstOrDefault(c => c.Id == "energy_canister");
+        if (entry == null || entry.Quantity <= 0)
+            return false;
+        entry.Quantity--;
+        if (entry.Quantity <= 0)
+            Consumables.RemoveAll(c => c.Id == "energy_canister");
+        Fuel = MathF.Min(MaxFuel, Fuel + MaxFuel * 0.2f);
+        return true;
+    }
+
+    public string? GetEquippedWeapon(int slotIndex)
+    {
+        string key = slotIndex == 0 ? "weapon1" : "weapon2";
+        return Equipment.TryGetValue(key, out var id) ? id : null;
+    }
+
+    public int MissileAmmoCount
+    {
+        get
+        {
+            var entry = Resources.FirstOrDefault(r => r.Id == "missile_ammo");
+            return entry?.Quantity ?? 0;
+        }
+    }
+
+    public bool ConsumeMissileAmmo()
+    {
+        var entry = Resources.FirstOrDefault(r => r.Id == "missile_ammo");
+        if (entry == null || entry.Quantity <= 0)
+            return false;
+        entry.Quantity--;
+        if (entry.Quantity <= 0)
+            Resources.RemoveAll(r => r.Id == "missile_ammo");
+        return true;
     }
 
     public Player(Vector2 startPosition)

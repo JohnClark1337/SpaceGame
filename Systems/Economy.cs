@@ -35,6 +35,17 @@ public class Economy
                         market.Demands[kv.Key] = kv.Value;
                 }
             }
+            // Add universal ammo/consumable to any system with market service
+            if (sys.Services != null && sys.Services.Contains("market"))
+            {
+                if (!market.ProductionRates.ContainsKey("missile_ammo"))
+                {
+                    market.ProductionRates["missile_ammo"] = 5f;
+                    market.Demands["missile_ammo"] = 1f;
+                    market.Stocks["missile_ammo"] = 300f;
+                }
+            }
+
             _markets[sys.Id] = market;
         }
     }

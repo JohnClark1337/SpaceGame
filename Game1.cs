@@ -58,7 +58,11 @@ public class Game1 : Game
 
     private int _inventoryTab;
     private int _invScroll;
+    private int _invSelection;
     private int _priceScroll;
+    private bool _equipSelectMode;
+    private int _equipSelectSlotIdx;
+    private int _equipSelectCursor;
 
     public GameTime GameTime => _gameTime;
     public int ViewWidth => ScreenWidth;
@@ -132,6 +136,8 @@ public class Game1 : Game
         _player.CompletedQuests.Clear();
         _player.Resources.Clear();
         _player.QuestItems.Clear();
+        _player.Consumables.Clear();
+        _player.UnequippedEquipment.Clear();
         _player.Equipment.Clear();
         _player.CurrentSystemId = null;
 
@@ -261,6 +267,8 @@ public class Game1 : Game
                 _overlay = Overlay.Inventory;
                 _inventoryTab = 0;
                 _invScroll = 0;
+                _invSelection = 0;
+                _equipSelectMode = false;
             }
         }
 
@@ -274,8 +282,17 @@ public class Game1 : Game
         if (_overlay != Overlay.None)
         {
             bool ovEsc = keyboard.IsKeyDown(Keys.Escape) && _prevKeyboard.IsKeyUp(Keys.Escape);
-            if (ovEsc)
-                _overlay = Overlay.None;
+                if (ovEsc)
+                {
+                    if (_inventoryTab == 2 && _equipSelectMode)
+                    {
+                        _equipSelectMode = false;
+                    }
+                    else
+                    {
+                        _overlay = Overlay.None;
+                    }
+                }
 
             if (_overlay == Overlay.Inventory)
             {
@@ -287,14 +304,150 @@ public class Game1 : Game
                 bool invUp = (keyboard.IsKeyDown(Keys.Up) && _prevKeyboard.IsKeyUp(Keys.Up)) ||
                              (keyboard.IsKeyDown(Keys.W) && _prevKeyboard.IsKeyUp(Keys.W));
                 if (invLeft)
-                    _inventoryTab = (_inventoryTab - 1 + 3) % 3;
+                {
+                    _inventoryTab = (_inventoryTab - 1 + 4) % 4;
+                    _invSelection = 0;
+                    _equipSelectMode = false;
+                }
                 if (invRight)
-                    _inventoryTab = (_inventoryTab + 1) % 3;
-                if (invDown)
-                    _invScroll++;
-                if (invUp)
-                    _invScroll--;
-                if (_invScroll < 0) _invScroll = 0;
+                {
+                    _inventoryTab = (_inventoryTab + 1) % 4;
+                    _invSelection = 0;
+                    _equipSelectMode = false;
+                }
+                if (_inventoryTab == 2)
+                {
+                    string[] slotKeys = { "weapon1", "weapon2", "shield", "engine", "utility1", "utility2" };
+                    string[] slotFilters = { "weapon", "weapon", "shield", "engine", "utility", "utility" };
+                    bool invEnter = (keyboard.IsKeyDown(Keys.Enter) && _prevKeyboard.IsKeyUp(Keys.Enter));
+
+                    if (_equipSelectMode)
+                    {
+                        int slotIdx = _equipSelectSlotIdx;
+                        string filter = slotFilters[slotIdx];
+                        string key = slotKeys[slotIdx];
+
+                        // Build options list: "None" + unequipped items matching slot
+                        var options = new List<string> { "" }; // "" = None
+                        foreach (var entry in _player.UnequippedEquipment)
+                        {
+                            var def = _galaxy.FindEquipment(entry.Id);
+                            if (def != null && def.Slot == filter)
+                                options.Add(entry.Id);
+                        }
+
+                        if (invDown)
+                            _equipSelectCursor++;
+                        if (invUp)
+                            _equipSelectCursor--;
+                        if (_equipSelectCursor < 0) _equipSelectCursor = 0;
+                        if (_equipSelectCursor >= options.Count) _equipSelectCursor = options.Count - 1;
+
+                        if (invEnter)
+                        {
+                            string selected = options[_equipSelectCursor];
+                            if (selected == "")
+                            {
+                                // Unequip
+                                _player.Equipment.Remove(key);
+                            }
+                            else
+                            {
+                                // Equip selected item
+                                // First unequip current if any
+                                if (_player.Equipment.ContainsKey(key))
+                                {
+                                    var oldId = _player.Equipment[key];
+                                    _player.Equipment.Remove(key);
+                                    var existing = _player.UnequippedEquipment.FirstOrDefault(e => e.Id == oldId);
+                                    if (existing != null)
+                                        existing.Quantity++;
+                                    else
+                                        _player.UnequippedEquipment.Add(new InventoryEntry { Id = oldId, Quantity = 1 });
+                                }
+                                // Remove from unequipped
+                                var eqEntry = _player.UnequippedEquipment.FirstOrDefault(e => e.Id == selected);
+                                if (eqEntry != null)
+                                {
+                                    _player.Equipment[key] = selected;
+                                    eqEntry.Quantity--;
+                                    if (eqEntry.Quantity <= 0)
+                                        _player.UnequippedEquipment.RemoveAll(e => e.Id == selected);
+                                }
+                            }
+                            _equipSelectMode = false;
+                        }
+                    }
+                    else
+                    {
+                        if (invDown)
+                            _invSelection++;
+                        if (invUp)
+                            _invSelection--;
+                        int maxSel = slotKeys.Length - 1;
+                        if (_invSelection < 0) _invSelection = 0;
+                        if (_invSelection > maxSel) _invSelection = maxSel;
+
+                        if (invEnter)
+                        {
+                            _equipSelectSlotIdx = _invSelection;
+                            _equipSelectCursor = 0;
+
+                            string key = slotKeys[_invSelection];
+                            // Start cursor at current equipment (if any) + 1 for "None" offset
+                            if (_player.Equipment.ContainsKey(key))
+                            {
+                                string currentId = _player.Equipment[key];
+                                string filter = slotFilters[_invSelection];
+                                int idx = 0;
+                                foreach (var entry in _player.UnequippedEquipment)
+                                {
+                                    var def = _galaxy.FindEquipment(entry.Id);
+                                    if (def != null && def.Slot == filter)
+                                    {
+                                        idx++;
+                                        if (entry.Id == currentId)
+                                        {
+                                            _equipSelectCursor = idx;
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                            _equipSelectMode = true;
+                        }
+                    }
+                }
+                else if (_inventoryTab == 3)
+                {
+                    if (invDown)
+                        _invSelection++;
+                    if (invUp)
+                        _invSelection--;
+                    int maxSel = Math.Max(0, _player.Consumables.Count - 1);
+                    if (_invSelection < 0) _invSelection = 0;
+                    if (_invSelection > maxSel) _invSelection = maxSel;
+
+                    bool invEnter = (keyboard.IsKeyDown(Keys.Enter) && _prevKeyboard.IsKeyUp(Keys.Enter));
+                    if (invEnter && _player.Consumables.Count > 0)
+                    {
+                        var entry = _player.Consumables[_invSelection];
+                        if (entry.Id == "energy_canister")
+                        {
+                            _player.UseEnergyCanister();
+                            if (_invSelection >= _player.Consumables.Count)
+                                _invSelection = Math.Max(0, _player.Consumables.Count - 1);
+                        }
+                    }
+                }
+                else
+                {
+                    if (invDown)
+                        _invScroll++;
+                    if (invUp)
+                        _invScroll--;
+                    if (_invScroll < 0) _invScroll = 0;
+                }
             }
             else if (_overlay == Overlay.GalaxyMap)
             {
@@ -2025,7 +2178,7 @@ public class Game1 : Game
         }
 
         // Tabs
-        string[] tabs = { "Quest Items", "Resources", "Equipment" };
+        string[] tabs = { "Quest Items", "Resources", "Equipment", "Consumables" };
         float tabX = textX;
         for (int i = 0; i < tabs.Length; i++)
         {
@@ -2046,6 +2199,8 @@ public class Game1 : Game
             DrawInventoryResources(new Microsoft.Xna.Framework.Vector2(textX, textY), px + panelW - 20);
         else if (_inventoryTab == 2)
             DrawInventoryEquipment(new Microsoft.Xna.Framework.Vector2(textX, textY), px + panelW - 20);
+        else if (_inventoryTab == 3)
+            DrawInventoryConsumables(new Microsoft.Xna.Framework.Vector2(textX, textY), px + panelW - 20);
     }
 
     private void DrawInventoryQuestItems(Microsoft.Xna.Framework.Vector2 pos, float rightX)
@@ -2102,6 +2257,56 @@ public class Game1 : Game
 
         string[] slotLabels = { "Weapon 1", "Weapon 2", "Shield", "Engine", "Utility 1", "Utility 2" };
         string[] slotKeys = { "weapon1", "weapon2", "shield", "engine", "utility1", "utility2" };
+        string[] slotFilters = { "weapon", "weapon", "shield", "engine", "utility", "utility" };
+
+        if (_equipSelectMode && _equipSelectSlotIdx >= 0 && _equipSelectSlotIdx < slotKeys.Length)
+        {
+            // Draw selection overlay for the chosen slot
+            string slotLabel = slotLabels[_equipSelectSlotIdx];
+            DrawSpacedText(_font, $"Select equipment for {slotLabel}:",
+                new Microsoft.Xna.Framework.Vector2(pos.X, textY), Color.Cyan);
+            textY += 28;
+
+            string filter = slotFilters[_equipSelectSlotIdx];
+            string key = slotKeys[_equipSelectSlotIdx];
+            string? currentId = _player.Equipment.ContainsKey(key) ? _player.Equipment[key] : null;
+
+            // Build options
+            var optLabels = new List<string> { "None" };
+            var optIds = new List<string> { "" };
+            foreach (var entry in _player.UnequippedEquipment)
+            {
+                var def = _galaxy.FindEquipment(entry.Id);
+                if (def != null && def.Slot == filter)
+                {
+                    optLabels.Add($"{def.Name} x{entry.Quantity}");
+                    optIds.Add(entry.Id);
+                }
+            }
+
+            // Highlight current equipment
+            float cx = pos.X + 30;
+            for (int i = 0; i < optLabels.Count; i++)
+            {
+                bool isSelected = i == _equipSelectCursor;
+                bool isCurrent = (!string.IsNullOrEmpty(currentId) && optIds[i] == currentId);
+                string prefix = isSelected ? "> " : "  ";
+                Color c = isSelected ? Color.Yellow : (isCurrent ? Color.Lime : Color.White);
+                DrawSpacedText(_font, $"{prefix}{optLabels[i]}",
+                    new Microsoft.Xna.Framework.Vector2(cx, textY), c);
+                if (isCurrent && !isSelected)
+                {
+                    DrawSpacedText(_font, "(equipped)",
+                        new Microsoft.Xna.Framework.Vector2(cx + 180, textY), Color.Gray * 0.5f);
+                }
+                textY += 24;
+            }
+
+            textY += 8;
+            DrawSpacedText(_font, "[Enter] Select  [ESC] Cancel",
+                new Microsoft.Xna.Framework.Vector2(pos.X, textY), Color.Gray * 0.5f);
+            return;
+        }
 
         for (int i = 0; i < slotKeys.Length; i++)
         {
@@ -2114,20 +2319,91 @@ public class Game1 : Game
                 equipName = def?.Name ?? _player.Equipment[slotKeys[i]];
             }
 
-            DrawSpacedText(_font, $"{slotLabel}:",
-                new Microsoft.Xna.Framework.Vector2(pos.X, textY), Color.Gray);
+            bool selected = i == _invSelection;
+            string prefix = selected ? "> " : "  ";
+            Color slotColor = selected ? Color.Yellow : Color.Gray;
+            DrawSpacedText(_font, $"{prefix}{slotLabel}:",
+                new Microsoft.Xna.Framework.Vector2(pos.X, textY), slotColor);
             string itemLabel = filled ? equipName : "--- empty ---";
             Color itemColor = filled ? Color.Lime : Color.Gray * 0.5f;
             DrawSpacedText(_font, itemLabel,
-                new Microsoft.Xna.Framework.Vector2(pos.X + 120, textY), itemColor);
+                new Microsoft.Xna.Framework.Vector2(pos.X + 130, textY), itemColor);
+
+            if (selected)
+            {
+                DrawSpacedText(_font, "[Enter] Select",
+                    new Microsoft.Xna.Framework.Vector2(rightX - 130, textY), Color.Orange * 0.7f);
+            }
+
             textY += 26;
         }
 
-        textY += 10;
+        // Unequipped equipment section
+        textY += 8;
+        DrawSpacedText(_font, "Unequipped:",
+            new Microsoft.Xna.Framework.Vector2(pos.X, textY), Color.Gray * 0.7f);
+        textY += 18;
+        if (_player.UnequippedEquipment.Count == 0)
+        {
+            DrawSpacedText(_font, "  None",
+                new Microsoft.Xna.Framework.Vector2(pos.X, textY), Color.Gray * 0.4f);
+            textY += 20;
+        }
+        else
+        {
+            int maxEq = Math.Min(_player.UnequippedEquipment.Count, 5);
+            for (int i = 0; i < maxEq; i++)
+            {
+                var entry = _player.UnequippedEquipment[i];
+                var def = _galaxy.FindEquipment(entry.Id);
+                string name = def?.Name ?? entry.Id;
+                DrawSpacedText(_font, $"  {name} x{entry.Quantity}",
+                    new Microsoft.Xna.Framework.Vector2(pos.X, textY), Color.Gray * 0.6f);
+                textY += 18;
+            }
+        }
+
+        textY += 4;
 
         // Hint
         DrawSpacedText(_font, "[Q/E] Switch tab  |  [I] or [ESC] Close",
             new Microsoft.Xna.Framework.Vector2(pos.X, textY), Color.Gray * 0.5f);
+    }
+
+    private void DrawInventoryConsumables(Microsoft.Xna.Framework.Vector2 pos, float rightX)
+    {
+        float textY = pos.Y;
+        if (_player.Consumables.Count == 0)
+        {
+            DrawSpacedText(_font, "No consumables.",
+                new Microsoft.Xna.Framework.Vector2(pos.X, textY), Color.Gray);
+            return;
+        }
+
+        for (int i = 0; i < _player.Consumables.Count; i++)
+        {
+            var entry = _player.Consumables[i];
+            var def = _galaxy.FindConsumable(entry.Id);
+            string name = def?.Name ?? entry.Id;
+            bool selected = i == _invSelection;
+            string prefix = selected ? "> " : "  ";
+            Color itemColor = selected ? Color.Yellow : Color.White;
+            string label = $"{prefix}{name} x{entry.Quantity}";
+            DrawSpacedText(_font, label,
+                new Microsoft.Xna.Framework.Vector2(pos.X, textY), itemColor);
+
+            if (selected && def != null)
+            {
+                string hint = "[Enter] Use";
+                var hintSz = _font.MeasureString(hint);
+                DrawSpacedText(_font, hint,
+                    new Microsoft.Xna.Framework.Vector2(rightX - hintSz.X, textY), Color.Lime * 0.7f);
+                DrawSpacedText(_font, def.Description,
+                    new Microsoft.Xna.Framework.Vector2(pos.X + 20, textY + 22), Color.Gray * 0.7f);
+            }
+
+            textY += selected ? 40 : 24;
+        }
     }
 
     private void DrawSpacedText(SpriteFont font, string text, Microsoft.Xna.Framework.Vector2 position, Color color, float scale = 1f)
