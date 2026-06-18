@@ -369,25 +369,40 @@ public class Game1 : Game
                     var currentSys = _galaxy.FindSystemById(_player.CurrentSystemId);
                     if (currentSys != null)
                     {
-                        var connections = currentSys.Connections
+                        var unblockedConns = currentSys.Connections
                             .Where(id => !_routeManager.IsBlocked(_player.CurrentSystemId, id))
+                            .Select(id => _galaxy.FindSystemById(id))
+                            .Where(s => s != null)
+                            .Cast<StarSystemData>()
                             .ToList();
 
-                        if (connections.Count > 0)
+                        var reachableConns = unblockedConns
+                            .Where(s =>
+                            {
+                                float dist = Vector2.Distance(
+                                    _player.Position, new Vector2(s.X, s.Y));
+                                float fuelCost = MathF.Max(25f, dist * 0.015f);
+                                return _player.Fuel >= fuelCost &&
+                                       (_player.Fuel - fuelCost) > _player.MaxFuel / 3;
+                            })
+                            .Select(s => s.Id)
+                            .ToList();
+
+                        if (reachableConns.Count > 0)
                         {
-                            if (_selectedConnectionIndex >= connections.Count)
+                            if (_selectedConnectionIndex >= reachableConns.Count)
                                 _selectedConnectionIndex = 0;
 
                             bool upHit = (keyboard.IsKeyDown(Keys.Up) && _prevKeyboard.IsKeyUp(Keys.Up)) ||
                                          (keyboard.IsKeyDown(Keys.W) && _prevKeyboard.IsKeyUp(Keys.W));
                             bool downHit = (keyboard.IsKeyDown(Keys.Down) && _prevKeyboard.IsKeyUp(Keys.Down)) ||
                                            (keyboard.IsKeyDown(Keys.S) && _prevKeyboard.IsKeyUp(Keys.S));
-                            if (upHit) _selectedConnectionIndex = (_selectedConnectionIndex - 1 + connections.Count) % connections.Count;
-                            if (downHit) _selectedConnectionIndex = (_selectedConnectionIndex + 1) % connections.Count;
+                            if (upHit) _selectedConnectionIndex = (_selectedConnectionIndex - 1 + reachableConns.Count) % reachableConns.Count;
+                            if (downHit) _selectedConnectionIndex = (_selectedConnectionIndex + 1) % reachableConns.Count;
 
                             if (keyboard.IsKeyDown(Keys.Enter) && _prevKeyboard.IsKeyUp(Keys.Enter))
                             {
-                                string targetId = connections[_selectedConnectionIndex];
+                                string targetId = reachableConns[_selectedConnectionIndex];
                                 var targetSys = _galaxy.FindSystemById(targetId);
                                 if (targetSys != null)
                                 {
@@ -395,32 +410,25 @@ public class Game1 : Game
                                         _player.Position,
                                         new Vector2(targetSys.X, targetSys.Y));
                                     float fuelCost = MathF.Max(25f, dist * 0.015f);
-                                    if (_player.Fuel >= fuelCost)
-                                    {
-                                        _player.Fuel -= fuelCost;
-                                        _travelDestId = targetId;
-                                        _travelStartPos = _player.Position;
-                                        _travelEndPos = new Vector2(targetSys.X, targetSys.Y);
-                                        _travelLerp = 0f;
-                                        _isTraveling = true;
-                                        _player.Velocity = Vector2.Zero;
-                                        SetStatus($"Traveling to {targetSys.Name}...");
-                                    }
-                                    else
-                                    {
-                                        SetStatus($"Need {fuelCost:F0} fuel (have {_player.Fuel}). [Y] Exchange 1/4 HP for 1/4 fuel");
-                                    }
+                                    _player.Fuel -= fuelCost;
+                                    _travelDestId = targetId;
+                                    _travelStartPos = _player.Position;
+                                    _travelEndPos = new Vector2(targetSys.X, targetSys.Y);
+                                    _travelLerp = 0f;
+                                    _isTraveling = true;
+                                    _player.Velocity = Vector2.Zero;
+                                    SetStatus($"Traveling to {targetSys.Name}...");
                                 }
                             }
+                        }
 
-                            // Fuel exchange in galaxy view
-                            if (_player.Health > _player.MaxHealth / 4 &&
-                                keyboard.IsKeyDown(Keys.Y) && _prevKeyboard.IsKeyUp(Keys.Y))
-                            {
-                                _player.Health -= _player.MaxHealth / 4;
-                                _player.Fuel += _player.MaxFuel / 4;
-                                SetStatus($"Exchanged HP for fuel. Fuel: {_player.Fuel:F0}");
-                            }
+                        // Fuel exchange — available even when no routes are reachable
+                        if (_player.Health > _player.MaxHealth / 4 &&
+                            keyboard.IsKeyDown(Keys.Y) && _prevKeyboard.IsKeyUp(Keys.Y))
+                        {
+                            _player.Health -= _player.MaxHealth / 4;
+                            _player.Fuel += _player.MaxFuel / 4;
+                            SetStatus($"Exchanged HP for fuel. Fuel: {_player.Fuel:F0}");
                         }
 
                         if (keyboard.IsKeyDown(Keys.E) && _prevKeyboard.IsKeyUp(Keys.E))
@@ -1070,17 +1078,32 @@ public class Game1 : Game
                     new Microsoft.Xna.Framework.Vector2(10, routeY), Color.Gold);
                 routeY += 22;
 
-                int idx = 0;
+                int selectableIdx = 0;
                 foreach (var conn in connections)
                 {
                     bool blocked = _routeManager.IsBlocked(currentSys.Id, conn.Id);
-                    bool selected = idx == _selectedConnectionIndex;
+                    float dist = Vector2.Distance(
+                        new Vector2(currentSys.X, currentSys.Y),
+                        new Vector2(conn.X, conn.Y));
+                    float fuelCost = MathF.Max(25f, dist * 0.015f);
+                    bool inRange = _player.Fuel >= fuelCost &&
+                                   (_player.Fuel - fuelCost) > _player.MaxFuel / 3;
+                    bool selected = !blocked && inRange && selectableIdx == _selectedConnectionIndex;
+
                     Color c;
                     string prefix;
+                    string suffix = "";
                     if (blocked)
                     {
                         c = Color.Red * 0.5f;
-                        prefix = selected ? "> " : "  ";
+                        prefix = "  ";
+                        suffix = "  BLOCKED";
+                    }
+                    else if (!inRange)
+                    {
+                        c = Color.DimGray * 0.7f;
+                        prefix = "  ";
+                        suffix = "  OUT OF RANGE";
                     }
                     else if (selected)
                     {
@@ -1092,34 +1115,12 @@ public class Game1 : Game
                         c = Color.White * 0.8f;
                         prefix = "  ";
                     }
-                    string label = $"{prefix}{conn.Name}  [{(int)Vector2.Distance(new Vector2(currentSys.X, currentSys.Y), new Vector2(conn.X, conn.Y))}u]";
-                    if (blocked) label += "  BLOCKED";
+                    string label = $"{prefix}{conn.Name}  [{(int)dist}u]{suffix}";
                     DrawSpacedText(_font, label,
                         new Microsoft.Xna.Framework.Vector2(10, routeY), c);
                     routeY += 18;
-                    idx++;
-                }
 
-                // Show blocked connections below
-                var blockedConns = currentSys.Connections
-                    .Where(id => _routeManager.IsBlocked(currentSys.Id, id))
-                    .Select(id => _galaxy.FindSystemById(id))
-                    .Where(s => s != null)
-                    .Cast<StarSystemData>()
-                    .ToList();
-
-                if (blockedConns.Count > 0 && connections.Count > 0)
-                {
-                    routeY += 6;
-                    DrawSpacedText(_font, "--- Blocked (unavailable) ---",
-                        new Microsoft.Xna.Framework.Vector2(10, routeY), Color.Red * 0.6f);
-                    routeY += 18;
-                    foreach (var conn in blockedConns)
-                    {
-                        DrawSpacedText(_font, $"  {conn.Name}",
-                            new Microsoft.Xna.Framework.Vector2(10, routeY), Color.Red * 0.4f);
-                        routeY += 16;
-                    }
+                    if (!blocked && inRange) selectableIdx++;
                 }
             }
         }

@@ -124,6 +124,10 @@ public class SystemScene
         _docked = false;
         _trainingPaused = false;
         _showEnemyList = false;
+        _gameOver = false;
+        _exploding = false;
+        _debris.Clear();
+        _enemyExplosions.Clear();
     }
 
     private void Initialize()
@@ -174,7 +178,7 @@ public class SystemScene
             if (p.OrbitRadius > _systemRadius) _systemRadius = p.OrbitRadius;
         if (_system.Station != null && _station.OrbitRadius > _systemRadius)
             _systemRadius = _station.OrbitRadius;
-        _systemRadius = MathF.Max(_systemRadius, 1f) * 1.1f;
+        _systemRadius = MathF.Max(MathF.Max(_systemRadius, 1f) * 1.1f, _star.BodyRadius * 2f);
 
         // Ensure station orbits outside overheating range
         if (_system.Station != null)
