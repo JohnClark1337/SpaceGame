@@ -852,8 +852,8 @@
     {
       "id": "trigor",
       "name": "Trigor",
-      "x": 10000,
-      "y": -800,
+      "x": 9800,
+      "y": -500,
       "radius": 55,
       "color": "FF2200",
       "description": "The throneworld of the Trigor Empire. A massive industrial fortress-system bristling with orbital defenses.",
@@ -880,8 +880,8 @@
     {
       "id": "trigor_beta",
       "name": "Trigor Beta",
-      "x": 11500,
-      "y": -800,
+      "x": 11200,
+      "y": -300,
       "radius": 30,
       "color": "FF5533",
       "description": "A Trigor military outpost guarding the eastern approaches to the Empire.",
@@ -902,8 +902,8 @@
     {
       "id": "trigor_gamma",
       "name": "Trigor Gamma",
-      "x": 10000,
-      "y": -2300,
+      "x": 9200,
+      "y": -1800,
       "radius": 28,
       "color": "CC3311",
       "description": "A penal colony orbiting a dim red star. Faint distress signals are picked up near the lower atmosphere.",

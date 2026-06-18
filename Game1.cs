@@ -295,6 +295,41 @@ public class Game1 : Game
                     _invScroll--;
                 if (_invScroll < 0) _invScroll = 0;
             }
+            else if (_overlay == Overlay.GalaxyMap)
+            {
+                if (mouse.LeftButton == ButtonState.Pressed && _prevMouse.LeftButton == ButtonState.Released)
+                {
+                    float minX = float.MaxValue, maxX = float.MinValue;
+                    float minY = float.MaxValue, maxY = float.MinValue;
+                    foreach (var s in _galaxy.Systems)
+                    {
+                        if (s.X < minX) minX = s.X;
+                        if (s.X > maxX) maxX = s.X;
+                        if (s.Y < minY) minY = s.Y;
+                        if (s.Y > maxY) maxY = s.Y;
+                    }
+                    float rangeX = maxX - minX + 400;
+                    float rangeY = maxY - minY + 400;
+                    float mapAreaW = ScreenWidth - 80;
+                    float mapAreaH = ScreenHeight - 120;
+                    float scale = MathF.Min(mapAreaW / rangeX, mapAreaH / rangeY) * 0.9f;
+                    float cx = (minX + maxX) / 2f;
+                    float cy = (minY + maxY) / 2f;
+                    float originX = ScreenWidth / 2f;
+                    float originY = ScreenHeight / 2f + 10;
+                    float worldX = (mouse.X - originX) / scale + cx;
+                    float worldY = (mouse.Y - originY) / scale + cy;
+                    var clicked = _galaxy.FindSystemAtPosition(
+                        new Vector2(worldX, worldY), 50f);
+                    if (clicked != null)
+                    {
+                        _menuSystem = clicked;
+                        _currentMenu = MenuType.SystemInfo;
+                        _menuSelection = 0;
+                        _overlay = Overlay.None;
+                    }
+                }
+            }
 
             _prevKeyboard = keyboard;
             _prevMouse = mouse;
@@ -438,6 +473,20 @@ public class Game1 : Game
                             _systemScene.EnterSystem(currentSys, this);
                             _viewMode = ViewMode.System;
                         }
+                    }
+                }
+
+                // Click on system to show info
+                if (mouse.LeftButton == ButtonState.Pressed && _prevMouse.LeftButton == ButtonState.Released)
+                {
+                    Vector2 offset = new Vector2(ScreenWidth / 2f, ScreenHeight / 2f) - _player.Position;
+                    var worldPos = new Vector2(mouse.X - offset.X, mouse.Y - offset.Y);
+                    var clicked = _galaxy.FindSystemAtPosition(worldPos, 40f);
+                    if (clicked != null)
+                    {
+                        _menuSystem = clicked;
+                        _currentMenu = MenuType.SystemInfo;
+                        _menuSelection = 0;
                     }
                 }
             }
@@ -649,7 +698,18 @@ public class Game1 : Game
         }
 
         int maxItem = 0;
-        if (_currentMenu == MenuType.SystemInfo) maxItem = 2;
+        if (_currentMenu == MenuType.SystemInfo)
+        {
+            int count = 1;
+            if (_menuSystem != null)
+            {
+                if (_menuSystem.Services.Contains("upgrades") || _menuSystem.Services.Contains("market"))
+                    count++;
+                if (_galaxy.AvailableQuests.Any(q => q.GiverSystem == _menuSystem.Id))
+                    count++;
+            }
+            maxItem = count - 1;
+        }
         else if (_currentMenu == MenuType.Pause) maxItem = 5;
         else if (_currentMenu == MenuType.UpgradeShop)
         {
@@ -1241,8 +1301,8 @@ public class Game1 : Game
         _spriteBatch.Draw(_pixel, new Microsoft.Xna.Framework.Rectangle(0, 0, ScreenWidth, ScreenHeight),
             new Color(0, 0, 0, 140));
 
+        int panelH = _currentMenu == MenuType.SystemInfo ? 560 : 500;
         int panelW = 700;
-        int panelH = 500;
         int px = (ScreenWidth - panelW) / 2;
         int py = (ScreenHeight - panelH) / 2;
 
@@ -1278,26 +1338,111 @@ public class Game1 : Game
         else if (_currentMenu == MenuType.SystemInfo && _menuSystem != null)
         {
             var sys = _menuSystem;
+
+            // System name
             DrawSpacedText(_titleFont, sys.Name, new Microsoft.Xna.Framework.Vector2(textX, textY), ParseColor(sys.Color));
-            textY += 50;
+            textY += 48;
 
+            // Description (left side, ~half the panel width)
             DrawSpacedText(_font, sys.Description, new Microsoft.Xna.Framework.Vector2(textX, textY), Color.White * 0.8f);
-            textY += 40;
+            textY += 36;
 
+            // Faction
             DrawSpacedText(_font, $"Faction: {sys.Faction ?? "None"}", new Microsoft.Xna.Framework.Vector2(textX, textY), Color.Cyan);
-            textY += 22;
+            textY += 20;
             DrawSpacedText(_font, $"Hostility Level: {sys.Hostility}/10", new Microsoft.Xna.Framework.Vector2(textX, textY),
                 sys.Hostility > 3 ? Color.OrangeRed : Color.LimeGreen);
-            textY += 22;
+            textY += 20;
 
             if (sys.Services.Count > 0)
             {
                 DrawSpacedText(_font, "Services: " + string.Join(", ", sys.Services), new Microsoft.Xna.Framework.Vector2(textX, textY), Color.Yellow * 0.9f);
-                textY += 30;
+                textY += 26;
             }
 
-            textY += 20;
+            // Mini system map (top-right corner of panel)
+            float mapCx = px + panelW - 105;
+            float mapCy = py + 75;
+            float mapR = 85;
+            DrawRect(mapCx - mapR - 3, mapCy - mapR - 3, mapR * 2 + 6, mapR * 2 + 6, new Color(60, 60, 100));
 
+            float miniSysR = 0f;
+            foreach (var p in sys.Planets)
+                if (p.OrbitRadius > miniSysR) miniSysR = p.OrbitRadius;
+            if (sys.Station != null && sys.Station.OrbitRadius > miniSysR)
+                miniSysR = sys.Station.OrbitRadius;
+            miniSysR = MathF.Max(MathF.Max(miniSysR, 1f) * 1.1f, sys.StarRadius * 2f);
+            float mScale = mapR / miniSysR;
+
+            float mStarR = MathF.Max(sys.StarRadius * mScale, 3f);
+            FillCircle(mapCx, mapCy, mStarR, ParseColor(sys.Color) * 0.5f);
+            DrawCircle(mapCx, mapCy, mStarR, ParseColor(sys.Color));
+
+            foreach (var p in sys.Planets)
+                DrawCircle(mapCx, mapCy, p.OrbitRadius * mScale, new Color(60, 60, 80, 100));
+            if (sys.Station != null)
+                DrawCircle(mapCx, mapCy, sys.Station.OrbitRadius * mScale, new Color(60, 80, 100, 100));
+
+            float ang = 0;
+            foreach (var p in sys.Planets)
+            {
+                float ppx = mapCx + MathF.Cos(ang) * p.OrbitRadius * mScale;
+                float ppy = mapCy + MathF.Sin(ang) * p.OrbitRadius * mScale;
+                FillCircle(ppx, ppy, MathF.Max(p.Radius * mScale, 2f), ParseColor(p.Color));
+                ang += 1.5f;
+            }
+
+            if (sys.Station != null)
+            {
+                float stAngle = sys.Station.Angle;
+                float stx = mapCx + MathF.Cos(stAngle) * sys.Station.OrbitRadius * mScale;
+                float sty = mapCy + MathF.Sin(stAngle) * sys.Station.OrbitRadius * mScale;
+                FillCircle(stx, sty, MathF.Max(sys.Station.Radius * mScale, 2f), Color.LightBlue);
+            }
+
+            string mapLabel = "System";
+            var mapSz = _font.MeasureString(mapLabel);
+            DrawSpacedText(_font, mapLabel,
+                new Microsoft.Xna.Framework.Vector2(mapCx - mapSz.X / 2f, mapCy + mapR + 8), Color.Gray * 0.7f);
+
+            textY += 12;
+
+            // Resource price comparison
+            var currentSys = _galaxy.CurrentSystem;
+            if (currentSys != null && currentSys.Id != sys.Id)
+            {
+                DrawSpacedText(_font, "--- Market Prices vs Current ---",
+                    new Microsoft.Xna.Framework.Vector2(textX, textY), Color.Gold);
+                textY += 22;
+
+                foreach (var res in _galaxy.AllResources)
+                {
+                    int hereBuy = _galaxy.Economy.GetBuyPrice(sys.Id, res.Id);
+                    int hereSell = _galaxy.Economy.GetSellPrice(sys.Id, res.Id);
+                    int curBuy = _galaxy.Economy.GetBuyPrice(currentSys.Id, res.Id);
+                    int curSell = _galaxy.Economy.GetSellPrice(currentSys.Id, res.Id);
+
+                    string line = $"[{res.Symbol,-4}] {res.Name,-11} {hereBuy,3}/{hereSell,-3}";
+
+                    Color c = Color.White * 0.75f;
+                    string hint = "";
+                    if (hereBuy < curBuy) { hint = "  BUY"; c = Color.LightGreen; }
+                    else if (hereSell > curSell) { hint = "  SELL"; c = Color.Orange; }
+
+                    DrawSpacedText(_font, line + hint, new Microsoft.Xna.Framework.Vector2(textX, textY), c);
+                    textY += 14;
+                }
+
+                textY += 8;
+            }
+            else if (currentSys != null && currentSys.Id == sys.Id)
+            {
+                DrawSpacedText(_font, "-- Current system --",
+                    new Microsoft.Xna.Framework.Vector2(textX, textY), Color.Gray * 0.6f);
+                textY += 22;
+            }
+
+            // Action items
             bool hasUpgrades = sys.Services.Contains("upgrades") || sys.Services.Contains("market");
             bool hasQuests = _galaxy.AvailableQuests.Any(q => q.GiverSystem == sys.Id);
 
@@ -1309,10 +1454,10 @@ public class Game1 : Game
             for (int i = 0; i < items.Count; i++)
             {
                 bool selected = _menuSelection == i;
-                Color c = selected ? Color.Yellow : Color.Gray;
+                Color c2 = selected ? Color.Yellow : Color.Gray;
                 string prefix = selected ? "> " : "  ";
-                DrawSpacedText(_font, prefix + items[i], new Microsoft.Xna.Framework.Vector2(textX, textY), c);
-                textY += 24;
+                DrawSpacedText(_font, prefix + items[i], new Microsoft.Xna.Framework.Vector2(textX, textY), c2);
+                textY += 22;
             }
         }
         else if (_currentMenu == MenuType.UpgradeShop && _menuSystem != null)
