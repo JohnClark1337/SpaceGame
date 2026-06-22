@@ -131,6 +131,16 @@ public class Galaxy
             quest.TargetSystem == player.CurrentSystemId &&
             player.QuestItems.Any(qi => qi.Id == quest.TargetItem))
             return true;
+        if (quest.ObjectiveType == "deliver" && quest.TargetSystem == player.CurrentSystemId)
+        {
+            foreach (var kv in quest.RequiredResources)
+            {
+                var inv = player.Resources.FirstOrDefault(r => r.Id == kv.Key);
+                if (inv == null || inv.Quantity < kv.Value)
+                    return false;
+            }
+            return true;
+        }
         return false;
     }
 
@@ -149,6 +159,26 @@ public class Galaxy
         }
         if (quest.TargetItem != null)
             player.QuestItems.RemoveAll(qi => qi.Id == quest.TargetItem);
+
+        // Consume resources for deliver quests
+        if (quest.ObjectiveType == "deliver" && quest.RequiredResources.Count > 0)
+        {
+            foreach (var kv in quest.RequiredResources)
+            {
+                var inv = player.Resources.FirstOrDefault(r => r.Id == kv.Key);
+                if (inv != null)
+                    inv.Quantity -= kv.Value;
+            }
+        }
+
+        // Apply defense upgrade reward
+        if (quest.RewardDefenseSystem != null)
+        {
+            var sys = Systems.FirstOrDefault(s => s.Id == quest.RewardDefenseSystem);
+            if (sys?.Station != null && sys.Station.DefenseLevel < 5)
+                sys.Station.DefenseLevel++;
+        }
+
         player.CompletedQuests.Add(quest.Id);
         ActiveQuests.Remove(quest);
     }

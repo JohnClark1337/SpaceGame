@@ -25,6 +25,8 @@ public class Game1 : Game
     private float _aiTickTimer;
     private float _aiCaptureTimer;
     private float _federationAiTimer;
+    private float _aiDefenseTimer;
+    private float _aiDefenseQuestTimer;
     private LlmService? _llmService;
     private bool _useLlm;
     private bool _llmChecked;
@@ -156,6 +158,7 @@ public class Game1 : Game
         _aiTickTimer = 8f;
         _aiCaptureTimer = 30f;
         _federationAiTimer = 30f;
+        _aiDefenseTimer = 60f;
         _galaxy.ActiveQuests.Clear();
         _galaxy.TargetSystem = null;
 
@@ -730,6 +733,22 @@ public class Game1 : Game
                     {
                         _federationAiTimer = 30f;
                         FederationAiTick();
+                    }
+
+                    // AI station defense building
+                    _aiDefenseTimer -= dt;
+                    if (_aiDefenseTimer <= 0f)
+                    {
+                        _aiDefenseTimer = 60f;
+                        AiDefenseTick();
+                    }
+
+                    // AI defense fetch quest generation
+                    _aiDefenseQuestTimer -= dt;
+                    if (_aiDefenseQuestTimer <= 0f)
+                    {
+                        _aiDefenseQuestTimer = 120f;
+                        GenerateDefenseQuest();
                     }
                 }
             }
@@ -2819,6 +2838,7 @@ public class Game1 : Game
         {
             sys.Hostility = 0;
             sys.Faction = "Terran Federation";
+            if (sys.Station != null) sys.Station.DefenseLevel = 0;
             _statusMessage = $"Terran Federation has captured {sys.Name}!";
             _galaxy.NewsService?.PostBreakingNews(
                 $"Federation Liberates {sys.Name}",
@@ -2829,6 +2849,7 @@ public class Game1 : Game
         {
             sys.Hostility = 5;
             sys.Faction = "Trigor Empire";
+            if (sys.Station != null) sys.Station.DefenseLevel = 0;
             _statusMessage = $"Trigor Empire has captured {sys.Name}!";
             _galaxy.NewsService?.PostBreakingNews(
                 $"Trigor Empire Claims {sys.Name}",
@@ -2912,6 +2933,79 @@ public class Game1 : Game
         }
 
         FederationStartAttack(target.Id);
+    }
+
+    private void AiDefenseTick()
+    {
+        var aiSystems = _galaxy.Systems
+            .Where(s => s.Station != null && s.Station.DefenseLevel < 3)
+            .Where(s => s.Faction == "Terran Federation" || s.Faction == "Trigor Empire")
+            .ToList();
+        if (aiSystems.Count == 0) return;
+
+        var target = aiSystems[Random.Shared.Next(aiSystems.Count)];
+        target.Station.DefenseLevel++;
+    }
+
+    private void GenerateDefenseQuest()
+    {
+        var candidates = _galaxy.Systems
+            .Where(s => s.Station != null &&
+                s.Station.DefenseLevel >= 3 && s.Station.DefenseLevel < 5)
+            .Where(s => s.Faction == "Terran Federation" || s.Faction == "Trigor Empire")
+            .ToList();
+        if (candidates.Count == 0) return;
+
+        var target = candidates[Random.Shared.Next(candidates.Count)];
+        int nextLevel = target.Station.DefenseLevel + 1;
+
+        var cost = GetDefenseCost(nextLevel);
+        if (cost.resources.Count == 0) return;
+
+        string questId = $"defense_{target.Id}_{nextLevel}_{Random.Shared.Next(9999)}";
+        string faction = target.Faction ?? "Unknown";
+
+        // Pick a giver system (any non-hostile system with a station)
+        var givers = _galaxy.Systems
+            .Where(s => s.Id != target.Id && s.Hostility < 3 && s.Station != null)
+            .ToList();
+        if (givers.Count == 0) return;
+        var giver = givers[Random.Shared.Next(givers.Count)];
+
+        string resList = string.Join(", ", cost.resources.Select(r =>
+        {
+            var def = _galaxy.FindResource(r.id);
+            return $"{def?.Name ?? r.id} x{r.qty}";
+        }));
+
+        var quest = new QuestData
+        {
+            Id = questId,
+            Name = $"Defense Upgrade: {target.Name} (Lv {target.Station.DefenseLevel}->{nextLevel})",
+            Description = $"{faction} needs {resList} delivered to {target.Name} Station to upgrade defenses.",
+            ObjectiveType = "deliver",
+            TargetSystem = target.Id,
+            RewardCredits = 500 * nextLevel,
+            GiverSystem = giver.Id,
+            RewardDefenseSystem = target.Id,
+            RequiredResources = cost.resources.ToDictionary(r => r.id, r => r.qty)
+        };
+
+        _galaxy.AllQuests.Add(quest);
+        _galaxy.RefreshAvailableQuests(_player);
+    }
+
+    private (int credits, List<(string id, int qty)> resources) GetDefenseCost(int level)
+    {
+        return level switch
+        {
+            1 => (500, new() { ("fe", 10), ("c", 15) }),
+            2 => (1500, new() { ("ti", 8), ("cu", 10) }),
+            3 => (3000, new() { ("si", 12), ("al", 15) }),
+            4 => (6000, new() { ("li", 6), ("nd", 4) }),
+            5 => (10000, new() { ("pt", 3), ("au", 4) }),
+            _ => (0, new())
+        };
     }
 
     private void DrawStatusMessage()

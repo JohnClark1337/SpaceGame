@@ -29,6 +29,27 @@ public class SystemScene
     private Body _station;
     private float _stationHealth;
     private const float _stationMaxHealth = 100f;
+    private int _stationDefenseLevel;
+    private bool _stationHasShield;
+    private struct StationTurret
+    {
+        public Vector2 Position;
+        public float Angle;
+        public float Cooldown;
+        public bool Active;
+    }
+    private List<StationTurret> _stationTurrets = new();
+    private struct RingSection
+    {
+        public float Angle;
+        public float Health;
+        public float MaxHealth;
+        public bool Active;
+        public float LaserCooldown;
+        public float MissileCooldown;
+    }
+    private List<RingSection> _ringSections = new();
+    private const float RING_SECTION_MAX_HEALTH = 50f;
     private float _spawnRadius;
     private const float ZOOM = 3.75f;
     private float _systemRadius;
@@ -184,6 +205,100 @@ public class SystemScene
         _asteroidLoot.Clear();
         _asteroidExplosions.Clear();
         _showPickupDialog = false;
+        ClearStationDefenses();
+    }
+
+    private void ClearStationDefenses()
+    {
+        _stationTurrets.Clear();
+        _ringSections.Clear();
+        _stationDefenseLevel = 0;
+        _stationHasShield = false;
+    }
+
+    private void InitStationDefenses()
+    {
+        ClearStationDefenses();
+        if (_system.Station == null) return;
+        _stationDefenseLevel = _system.Station.DefenseLevel;
+        if (_stationDefenseLevel < 1) return;
+
+        // Level 1: 3 basic gun turrets evenly spaced around station
+        float r = _station.BodyRadius + 8f;
+        for (int i = 0; i < 3; i++)
+        {
+            float a = MathF.PI * 2f / 3f * i;
+            _stationTurrets.Add(new StationTurret
+            {
+                Position = new Vector2(MathF.Cos(a) * r, MathF.Sin(a) * r),
+                Angle = a,
+                Cooldown = 0f,
+                Active = true
+            });
+        }
+
+        // Levels 2-5: ring sections
+        int sectionCount = Math.Clamp(_stationDefenseLevel - 1, 0, 4);
+        if (sectionCount > 0)
+        {
+            float sectionAngleStep = MathF.PI * 2f / 4f;
+            float startAngle = -sectionAngleStep / 2f;
+            for (int i = 0; i < sectionCount; i++)
+            {
+                _ringSections.Add(new RingSection
+                {
+                    Angle = startAngle + sectionAngleStep * i,
+                    Health = RING_SECTION_MAX_HEALTH,
+                    MaxHealth = RING_SECTION_MAX_HEALTH,
+                    Active = true,
+                    LaserCooldown = 0f,
+                    MissileCooldown = 0f
+                });
+            }
+        }
+
+        // Level 5: shield
+        _stationHasShield = _stationDefenseLevel >= 5 && _ringSections.All(s => s.Active);
+    }
+
+    private (int credits, List<(string id, int qty)> resources) GetDefenseUpgradeCost(int currentLevel)
+    {
+        int nextLevel = currentLevel + 1;
+        return nextLevel switch
+        {
+            1 => (500, new() { ("fe", 10), ("c", 15) }),
+            2 => (1500, new() { ("ti", 8), ("cu", 10) }),
+            3 => (3000, new() { ("si", 12), ("al", 15) }),
+            4 => (6000, new() { ("li", 6), ("nd", 4) }),
+            5 => (10000, new() { ("pt", 3), ("au", 4) }),
+            _ => (0, new())
+        };
+    }
+
+    private void UpgradeStationDefenses()
+    {
+        if (_system.Station == null || _stationDefenseLevel >= 5) return;
+        var cost = GetDefenseUpgradeCost(_stationDefenseLevel);
+        if (_player.Credits < cost.credits) return;
+        foreach (var req in cost.resources)
+        {
+            var inv = _player.Resources.FirstOrDefault(r => r.Id == req.id);
+            if (inv == null || inv.Quantity < req.qty) return;
+        }
+
+        _player.Credits -= cost.credits;
+        foreach (var req in cost.resources)
+        {
+            var inv = _player.Resources.FirstOrDefault(r => r.Id == req.id);
+            if (inv != null) inv.Quantity -= req.qty;
+        }
+
+        _stationDefenseLevel++;
+        _system.Station.DefenseLevel = _stationDefenseLevel;
+        InitStationDefenses();
+        _pickupMessage = $"Station defenses upgraded to Level {_stationDefenseLevel}!";
+        _pickupTimer = 2f;
+        _showPickupDialog = true;
     }
 
     private void Initialize()
@@ -228,6 +343,7 @@ public class SystemScene
                 CurrentAngle = sd.Angle,
             };
             _stationHealth = _stationMaxHealth;
+            InitStationDefenses();
         }
 
         _systemRadius = 0f;
@@ -767,22 +883,7 @@ public class SystemScene
                             Vector2 stationPos = new(_station.X, _station.Y);
                             if (LineCircleIntersect(muzzlePos, beamEnd, stationPos, _station.BodyRadius))
                             {
-                                _stationHealth -= beamDmg;
-                                if (_stationHealth <= 0f)
-                                {
-                                    _stationHealth = 0f;
-                                    _system.Hostility = 0;
-                                    _system.Faction = "Independent";
-                                    _enemyExplosions.Add(new EnemyExplosion
-                                    {
-                                        Position = stationPos,
-                                        Timer = 0f,
-                                        Duration = 1.2f
-                                    });
-                                    _pickupMessage = "Station Captured!";
-                                    _pickupTimer = 3f;
-                                    _showPickupDialog = true;
-                                }
+                                DamageStation(beamDmg);
                             }
                         }
                     }
@@ -913,23 +1014,8 @@ public class SystemScene
                     Vector2 stationPos = new(_station.X, _station.Y);
                     if (Vector2.Distance(m.Position, stationPos) < _station.BodyRadius + 5f)
                     {
-                        _stationHealth -= 5f;
                         remove = true;
-                        if (_stationHealth <= 0f)
-                        {
-                            _stationHealth = 0f;
-                            _system.Hostility = 0;
-                            _system.Faction = "Independent";
-                            _enemyExplosions.Add(new EnemyExplosion
-                            {
-                                Position = stationPos,
-                                Timer = 0f,
-                                Duration = 1.2f
-                            });
-                            _pickupMessage = "Station Captured!";
-                            _pickupTimer = 3f;
-                            _showPickupDialog = true;
-                        }
+                        DamageStation(5f);
                     }
                 }
 
@@ -1047,6 +1133,12 @@ public class SystemScene
                 _enemies[i] = e;
             }
 
+            // Station turrets
+            if (_system.Hostility >= 3 && _system.Station != null && !_docked)
+            {
+                UpdateStationTurrets(dt);
+            }
+
             // Bullet-enemy collisions
             for (int i = _bullets.Count - 1; i >= 0; i--)
             {
@@ -1123,23 +1215,8 @@ public class SystemScene
                     if (!b.IsPlayerBullet) continue;
                     if (Vector2.Distance(b.Position, stationPos) < _station.BodyRadius + 5f)
                     {
-                        _stationHealth -= 1f;
                         _bullets.RemoveAt(i);
-                        if (_stationHealth <= 0f)
-                        {
-                            _stationHealth = 0f;
-                            _system.Hostility = 0;
-                            _system.Faction = "Independent";
-                            _enemyExplosions.Add(new EnemyExplosion
-                            {
-                                Position = stationPos,
-                                Timer = 0f,
-                                Duration = 1.2f
-                            });
-                            _pickupMessage = "Station Captured!";
-                            _pickupTimer = 3f;
-                            _showPickupDialog = true;
-                        }
+                        DamageStation(1f);
                     }
                 }
             }
@@ -1334,7 +1411,8 @@ public class SystemScene
                     .Where(q => q.GiverSystem == _system.Id)
                     .ToList();
                 var activeTarget = _game.Galaxy.ActiveQuests
-                    .Where(q => q.ObjectiveType == "travel" && q.TargetSystem == _system.Id)
+                    .Where(q => q.TargetSystem == _system.Id &&
+                        (q.ObjectiveType == "travel" || q.ObjectiveType == "deliver"))
                     .ToList();
                 var completable = activeHere
                     .Where(q => _game.Galaxy.IsQuestObjectiveMet(q, _player))
@@ -1406,6 +1484,14 @@ public class SystemScene
                 }
 
                 if (_dockedNewsScroll < 0) _dockedNewsScroll = 0;
+            }
+
+            // Station defense upgrade (player-owned only)
+            if (_system.Faction == "Independent" && _system.Station != null &&
+                _stationDefenseLevel < 5 &&
+                keyboard.IsKeyDown(Keys.U) && _prevKeyboard.IsKeyUp(Keys.U))
+            {
+                UpgradeStationDefenses();
             }
         }
 
@@ -2150,6 +2236,59 @@ public class SystemScene
         DrawLine(sb, pixel, sx, sy - r, sx, sy - r - antH, glowColor);
         DrawLine(sb, pixel, sx - 4, sy - r - antH, sx + 4, sy - r - antH, glowColor);
 
+        // Ring sections (defense levels 2-5)
+        float ringR = r + 8f * ZOOM;
+        float ringW = 6f * ZOOM;
+        int arcSteps = 8;
+        foreach (var rs in _ringSections)
+        {
+            if (!rs.Active) continue;
+            float segAngle = MathF.PI * 2f / 4f;
+            float startA = rs.Angle - segAngle / 2f;
+            float endA = rs.Angle + segAngle / 2f;
+            for (int s = 0; s < arcSteps; s++)
+            {
+                float t1 = startA + (endA - startA) * s / arcSteps;
+                float t2 = startA + (endA - startA) * (s + 1) / arcSteps;
+                float x1 = sx + MathF.Cos(t1) * ringR;
+                float y1 = sy + MathF.Sin(t1) * ringR;
+                float x2 = sx + MathF.Cos(t2) * ringR;
+                float y2 = sy + MathF.Sin(t2) * ringR;
+                DrawLine(sb, pixel, x1, y1, x2, y2, new Color(180, 120, 60));
+            }
+            // Inner glow line
+            float innerR = ringR - ringW * 0.3f;
+            for (int s = 0; s < arcSteps; s++)
+            {
+                float t1 = startA + (endA - startA) * s / arcSteps;
+                float t2 = startA + (endA - startA) * (s + 1) / arcSteps;
+                float x1 = sx + MathF.Cos(t1) * innerR;
+                float y1 = sy + MathF.Sin(t1) * innerR;
+                float x2 = sx + MathF.Cos(t2) * innerR;
+                float y2 = sy + MathF.Sin(t2) * innerR;
+                DrawLine(sb, pixel, x1, y1, x2, y2, new Color(255, 200, 100) * 0.5f);
+            }
+        }
+
+        // Shield (level 5, all sections active)
+        if (_stationHasShield)
+        {
+            float shieldR = ringR + 6f * ZOOM;
+            float shieldPulse = MathF.Sin(t * 3f) * 0.03f + 0.12f;
+            DrawCircle(sb, pixel, sx, sy, shieldR, new Color(80, 180, 255) * shieldPulse);
+            DrawCircle(sb, pixel, sx, sy, shieldR + 2f, new Color(60, 140, 255) * shieldPulse * 0.5f);
+        }
+
+        // Turret dots on station body
+        foreach (var turret in _stationTurrets)
+        {
+            if (!turret.Active) continue;
+            float tx = sx + turret.Position.X;
+            float ty = sy + turret.Position.Y;
+            FillCircle(sb, pixel, tx, ty, 3f * ZOOM, new Color(180, 80, 80));
+            DrawCircle(sb, pixel, tx, ty, 3f * ZOOM, new Color(255, 120, 120));
+        }
+
         // Label
         var label = station.Name;
         var labelSize = font.MeasureString(label);
@@ -2288,7 +2427,66 @@ public class SystemScene
 
         DrawSpacedText(sb, font, $"Credits: {_player.Credits}  |  Cargo: {_player.UsedCargo}/{_player.CargoCapacity}",
             new Microsoft.Xna.Framework.Vector2(textX, textY), Color.Yellow);
-        textY += 35;
+        textY += 22;
+
+        // Station defense status & upgrade (player-owned stations only)
+        if (_system.Faction == "Independent" && _system.Station != null)
+        {
+            int defLvl = _stationDefenseLevel;
+            Color defColor = defLvl == 0 ? Color.Gray : defLvl >= 5 ? Color.Gold : Color.LightBlue;
+            DrawSpacedText(sb, font, $"Station Defenses: Level {defLvl}/5",
+                new Microsoft.Xna.Framework.Vector2(textX, textY), defColor);
+            textY += 16;
+
+            if (defLvl < 5)
+            {
+                var cost = GetDefenseUpgradeCost(defLvl);
+                bool canAfford = _player.Credits >= cost.credits;
+                foreach (var req in cost.resources)
+                {
+                    var inv = _player.Resources.FirstOrDefault(r => r.Id == req.id);
+                    int have = inv?.Quantity ?? 0;
+                    if (have < req.qty) canAfford = false;
+                }
+
+                string costStr = $"Upgrade cost: {cost.credits}cr";
+                foreach (var req in cost.resources)
+                {
+                    var res = _game.Galaxy.FindResource(req.id);
+                    var inv = _player.Resources.FirstOrDefault(r => r.Id == req.id);
+                    int have = inv?.Quantity ?? 0;
+                    costStr += $"  {res?.Name ?? req.id} {have}/{req.qty}";
+                }
+
+                Color costColor = canAfford ? Color.Lime : Color.Red;
+                DrawSpacedText(sb, font, costStr,
+                    new Microsoft.Xna.Framework.Vector2(textX + 20, textY), costColor);
+                textY += 16;
+
+                if (canAfford)
+                {
+                    string prompt = "[U] Upgrade Station Defenses";
+                    byte flash = (byte)((MathF.Sin(t * 4f) * 0.3f + 0.7f) * 255);
+                    DrawSpacedText(sb, font, prompt,
+                        new Microsoft.Xna.Framework.Vector2(textX + 20, textY),
+                        new Color(255, 255, 100, (int)flash));
+                }
+                else
+                {
+                    DrawSpacedText(sb, font, "Gather resources from trade or quests to upgrade.",
+                        new Microsoft.Xna.Framework.Vector2(textX + 20, textY), Color.Gray * 0.6f);
+                }
+                textY += 22;
+            }
+            else
+            {
+                DrawSpacedText(sb, font, "  Maximum defenses achieved. Shield active.",
+                    new Microsoft.Xna.Framework.Vector2(textX + 20, textY), Color.Gold * 0.7f);
+                textY += 22;
+            }
+        }
+
+        textY += 13;
 
         // Tab bar
         string[] tabs = { "Market", "Upgrades", "Quests", "News" };
@@ -3378,6 +3576,136 @@ public class SystemScene
             float velDot = e.Velocity.X * dir.X + e.Velocity.Y * dir.Y;
             if (velDot > 0f)
                 e.Velocity -= dir * velDot * 1.5f;
+        }
+    }
+
+    private void UpdateStationTurrets(float dt)
+    {
+        Vector2 stationPos = new(_station.X, _station.Y);
+        Vector2 toPlayer = _player.Position - stationPos;
+        float distToPlayer = toPlayer.Length();
+        if (distToPlayer < 1f) return;
+        Vector2 dirToPlayer = toPlayer.Normalized();
+        float angleToPlayer = MathF.Atan2(dirToPlayer.Y, dirToPlayer.X);
+
+        // Basic gun turrets (level 1)
+        float gunRange = 500f;
+        for (int i = 0; i < _stationTurrets.Count; i++)
+        {
+            var t = _stationTurrets[i];
+            if (!t.Active) continue;
+            t.Cooldown -= dt;
+            if (t.Cooldown <= 0f && distToPlayer < gunRange)
+            {
+                t.Cooldown = 0.25f;
+                Vector2 worldPos = stationPos + t.Position;
+                Vector2 bulletVel = dirToPlayer * BULLET_SPEED;
+                _bullets.Add(new Bullet
+                {
+                    Position = worldPos,
+                    Velocity = bulletVel,
+                    Lifetime = BULLET_LIFETIME,
+                    IsPlayerBullet = false
+                });
+            }
+            _stationTurrets[i] = t;
+        }
+
+        // Ring section turrets (levels 2-5)
+        float laserRange = 450f;
+        float missileRange = 500f;
+        float ringR = _station.BodyRadius + 16f;
+        for (int i = 0; i < _ringSections.Count; i++)
+        {
+            var rs = _ringSections[i];
+            if (!rs.Active) continue;
+
+            // Laser
+            rs.LaserCooldown -= dt;
+            if (rs.LaserCooldown <= 0f && distToPlayer < laserRange)
+            {
+                rs.LaserCooldown = 0.4f;
+                Vector2 turretPos = stationPos + Vector2.FromAngle(rs.Angle) * ringR;
+                Vector2 beamEnd = turretPos + dirToPlayer * 25f;
+                _laserBeams.Add(new LaserBeam
+                {
+                    Start = turretPos,
+                    End = beamEnd,
+                    Timer = 0.08f
+                });
+                if (LineCircleIntersect(turretPos, beamEnd, _player.Position, 22f))
+                {
+                    _player.Health -= 1;
+                }
+            }
+
+            // Missile
+            rs.MissileCooldown -= dt;
+            if (rs.MissileCooldown <= 0f && distToPlayer < missileRange)
+            {
+                rs.MissileCooldown = 2f;
+                Vector2 turretPos = stationPos + Vector2.FromAngle(rs.Angle) * ringR;
+                Vector2 missileVel = dirToPlayer * 200f;
+                _missiles.Add(new Missile
+                {
+                    Position = turretPos,
+                    Velocity = missileVel,
+                    Lifetime = 3f,
+                    TargetIndex = -1
+                });
+            }
+
+            _ringSections[i] = rs;
+        }
+    }
+
+    private void DamageStation(float damage)
+    {
+        if (_stationHasShield)
+        {
+            _stationHasShield = false;
+            return;
+        }
+
+        // Damage nearest ring section
+        Vector2 playerDir = (_player.Position - new Vector2(_station.X, _station.Y)).Normalized();
+        float playerAngle = MathF.Atan2(playerDir.Y, playerDir.X);
+        for (int i = 0; i < _ringSections.Count; i++)
+        {
+            var rs = _ringSections[i];
+            if (!rs.Active) continue;
+            float angleDiff = MathF.Abs(MathHelper.WrapAngle(rs.Angle - playerAngle));
+            if (angleDiff < MathF.PI / 4f)
+            {
+                rs.Health -= damage;
+                if (rs.Health <= 0f)
+                {
+                    rs.Active = false;
+                    _stationHasShield = false;
+                }
+                _ringSections[i] = rs;
+                return;
+            }
+        }
+
+        // No ring section hit — damage station health
+        _stationHealth -= damage;
+        if (_stationHealth <= 0f)
+        {
+            _stationHealth = 0f;
+            _system.Hostility = 0;
+            _system.Faction = "Independent";
+            _system.Station.DefenseLevel = 0;
+            Vector2 stationPos = new(_station.X, _station.Y);
+            _enemyExplosions.Add(new EnemyExplosion
+            {
+                Position = stationPos,
+                Timer = 0f,
+                Duration = 1.2f
+            });
+            _pickupMessage = "Station Captured!";
+            _pickupTimer = 3f;
+            _showPickupDialog = true;
         }
     }
 

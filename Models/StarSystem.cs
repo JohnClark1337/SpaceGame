@@ -16,6 +16,7 @@ public class StationData
     public float OrbitSpeed { get; set; } = 0.1f;
     public float Angle { get; set; }
     public float Radius { get; set; } = 40f;
+    public int DefenseLevel { get; set; }
 }
 
 public class EconomyData
