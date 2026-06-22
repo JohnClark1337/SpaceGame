@@ -58,6 +58,32 @@ public class Game1 : Game
     private Vector2 _galaxyPlayerPos;
     private Vector2 _galaxyPlayerVel;
 
+    // Training mode player state snapshot
+    private struct PlayerSnapshot
+    {
+        public int Credits;
+        public int Health;
+        public int MaxHealth;
+        public float Fuel;
+        public float MaxFuel;
+        public int CargoCapacity;
+        public string? CurrentSystemId;
+        public Vector2 Position;
+        public Vector2 Velocity;
+        public List<string> OwnedUpgrades;
+        public List<string> CompletedQuests;
+        public List<InventoryEntry> Resources;
+        public List<InventoryEntry> QuestItems;
+        public List<InventoryEntry> Consumables;
+        public List<InventoryEntry> UnequippedEquipment;
+        public Dictionary<string, string> Equipment;
+        public float BaseMaxSpeed;
+        public float BaseThrust;
+        public float BaseRotationSpeed;
+        public float Angle;
+    }
+    private PlayerSnapshot? _trainingPlayerSnapshot;
+
     private int _selectedConnectionIndex;
     private bool _isTraveling;
     private string? _travelDestId;
@@ -103,11 +129,36 @@ public class Game1 : Game
         _galaxyPlayerPos = _player.Position;
         _galaxyPlayerVel = _player.Velocity;
 
+        // Snapshot player state to restore on exit
+        _trainingPlayerSnapshot = new PlayerSnapshot
+        {
+            Credits = _player.Credits,
+            Health = _player.Health,
+            MaxHealth = _player.MaxHealth,
+            Fuel = _player.Fuel,
+            MaxFuel = _player.MaxFuel,
+            CargoCapacity = _player.CargoCapacity,
+            Angle = _player.Angle,
+            CurrentSystemId = _player.CurrentSystemId,
+            Position = _player.Position,
+            Velocity = _player.Velocity,
+            OwnedUpgrades = new List<string>(_player.OwnedUpgrades),
+            CompletedQuests = new List<string>(_player.CompletedQuests),
+            Resources = _player.Resources.Select(r => new InventoryEntry { Id = r.Id, Quantity = r.Quantity }).ToList(),
+            QuestItems = _player.QuestItems.Select(r => new InventoryEntry { Id = r.Id, Quantity = r.Quantity }).ToList(),
+            Consumables = _player.Consumables.Select(r => new InventoryEntry { Id = r.Id, Quantity = r.Quantity }).ToList(),
+            UnequippedEquipment = _player.UnequippedEquipment.Select(r => new InventoryEntry { Id = r.Id, Quantity = r.Quantity }).ToList(),
+            Equipment = new Dictionary<string, string>(_player.Equipment),
+            BaseMaxSpeed = _player.BaseMaxSpeed,
+            BaseThrust = _player.BaseThrust,
+            BaseRotationSpeed = _player.BaseRotationSpeed,
+        };
+
         var sys = _galaxy.FindSystemById(_player.CurrentSystemId ?? "proxima");
         if (sys != null)
         {
-            _systemScene.EnterSystem(sys, this);
             _systemScene.TrainingMode = true;
+            _systemScene.EnterSystem(sys, this);
             _systemScene.PopulateTrainingInventory();
             _viewMode = ViewMode.System;
             _currentMenu = MenuType.None;
@@ -118,6 +169,34 @@ public class Game1 : Game
     public void ExitTraining()
     {
         _systemScene.TrainingMode = false;
+
+        // Restore player state from pre-training snapshot
+        if (_trainingPlayerSnapshot.HasValue)
+        {
+            var snap = _trainingPlayerSnapshot.Value;
+            _player.Credits = snap.Credits;
+            _player.Health = snap.Health;
+            _player.MaxHealth = snap.MaxHealth;
+            _player.Fuel = snap.Fuel;
+            _player.MaxFuel = snap.MaxFuel;
+            _player.CargoCapacity = snap.CargoCapacity;
+            _player.Angle = snap.Angle;
+            _player.CurrentSystemId = snap.CurrentSystemId;
+            _player.Position = snap.Position;
+            _player.Velocity = snap.Velocity;
+            _player.OwnedUpgrades = snap.OwnedUpgrades;
+            _player.CompletedQuests = snap.CompletedQuests;
+            _player.Resources = snap.Resources;
+            _player.QuestItems = snap.QuestItems;
+            _player.Consumables = snap.Consumables;
+            _player.UnequippedEquipment = snap.UnequippedEquipment;
+            _player.Equipment = snap.Equipment;
+            _player.BaseMaxSpeed = snap.BaseMaxSpeed;
+            _player.BaseThrust = snap.BaseThrust;
+            _player.BaseRotationSpeed = snap.BaseRotationSpeed;
+            _trainingPlayerSnapshot = null;
+        }
+
         var sys = _galaxy.FindSystemById(_player.CurrentSystemId ?? "proxima");
         if (sys != null)
         {

@@ -29,6 +29,14 @@ public class SystemScene
     private Body _station;
     private float _stationHealth;
     private const float _stationMaxHealth = 100f;
+    private Body _trainingFriendlyStation;
+    private float _trainingFriendlyHealth;
+    private Vector2 _trainingTargetPos;
+    private bool _trainingFriendlyRespawning;
+    private float _trainingFriendlyRespawnTimer;
+    private bool _empireStationRespawning;
+    private float _empireStationRespawnTimer;
+    private bool _trainingHostile;
     private int _stationDefenseLevel;
     private bool _stationHasShield;
     private struct StationTurret
@@ -39,6 +47,7 @@ public class SystemScene
         public bool Active;
     }
     private List<StationTurret> _stationTurrets = new();
+    private List<StationTurret> _friendlyTurrets = new();
     private struct RingSection
     {
         public float Angle;
@@ -49,6 +58,8 @@ public class SystemScene
         public float MissileCooldown;
     }
     private List<RingSection> _ringSections = new();
+    private List<RingSection> _friendlyRingSections = new();
+    private bool _friendlyHasShield;
     private const float RING_SECTION_MAX_HEALTH = 50f;
     private float _spawnRadius;
     private const float ZOOM = 3.75f;
@@ -79,6 +90,7 @@ public class SystemScene
 
     private bool _trainingPaused;
     private int _trainingMenuSelection;
+    private bool _trainingInvincible;
     private bool _showEnemyList;
 
     private struct ExplosionDebris
@@ -178,6 +190,7 @@ public class SystemScene
 
     public bool Docked => _docked;
     public bool TrainingMode { get; set; }
+    private bool StationIsHostile => _trainingHostile || (_system.Hostility >= 3 && _system.Station != null);
     public StarSystemData? CurrentSystem => _system;
     public string StationName => _station.Name;
 
@@ -193,6 +206,7 @@ public class SystemScene
         _initialized = false;
         _docked = false;
         _trainingPaused = false;
+        _trainingInvincible = false;
         _showEnemyList = false;
         _gameOver = false;
         _exploding = false;
@@ -206,6 +220,14 @@ public class SystemScene
         _asteroidExplosions.Clear();
         _showPickupDialog = false;
         ClearStationDefenses();
+        _trainingFriendlyStation = default;
+        _trainingFriendlyHealth = 0;
+        _trainingTargetPos = Vector2.Zero;
+        _trainingFriendlyRespawning = false;
+        _trainingFriendlyRespawnTimer = 0f;
+        _empireStationRespawning = false;
+        _empireStationRespawnTimer = 0f;
+        _trainingHostile = false;
     }
 
     private void ClearStationDefenses()
@@ -219,8 +241,15 @@ public class SystemScene
     private void InitStationDefenses()
     {
         ClearStationDefenses();
-        if (_system.Station == null) return;
-        _stationDefenseLevel = _system.Station.DefenseLevel;
+        if (TrainingMode)
+        {
+            _stationDefenseLevel = 5;
+        }
+        else
+        {
+            if (_system.Station == null) return;
+            _stationDefenseLevel = _system.Station.DefenseLevel;
+        }
         if (_stationDefenseLevel < 1) return;
 
         // Level 1: 3 basic gun turrets evenly spaced around station
@@ -259,6 +288,47 @@ public class SystemScene
 
         // Level 5: shield
         _stationHasShield = _stationDefenseLevel >= 5 && _ringSections.All(s => s.Active);
+    }
+
+    private void InitFriendlyStationDefenses()
+    {
+        _friendlyTurrets.Clear();
+        _friendlyRingSections.Clear();
+        _friendlyHasShield = false;
+        int level = 5;
+        // Level 1: 3 basic gun turrets evenly spaced around station
+        float r = _trainingFriendlyStation.BodyRadius + 8f;
+        for (int i = 0; i < 3; i++)
+        {
+            float a = MathF.PI * 2f / 3f * i;
+            _friendlyTurrets.Add(new StationTurret
+            {
+                Position = new Vector2(MathF.Cos(a) * r, MathF.Sin(a) * r),
+                Angle = a,
+                Cooldown = 0f,
+                Active = true
+            });
+        }
+        // Levels 2-5: ring sections
+        int sectionCount = Math.Clamp(level - 1, 0, 4);
+        if (sectionCount > 0)
+        {
+            float sectionAngleStep = MathF.PI * 2f / 4f;
+            float startAngle = -sectionAngleStep / 2f;
+            for (int i = 0; i < sectionCount; i++)
+            {
+                _friendlyRingSections.Add(new RingSection
+                {
+                    Angle = startAngle + sectionAngleStep * i,
+                    Health = RING_SECTION_MAX_HEALTH,
+                    MaxHealth = RING_SECTION_MAX_HEALTH,
+                    Active = true,
+                    LaserCooldown = 0f,
+                    MissileCooldown = 0f
+                });
+            }
+        }
+        _friendlyHasShield = level >= 5 && _friendlyRingSections.All(s => s.Active);
     }
 
     private (int credits, List<(string id, int qty)> resources) GetDefenseUpgradeCost(int currentLevel)
@@ -346,6 +416,7 @@ public class SystemScene
             InitStationDefenses();
         }
 
+        // Calculate system radius before training mode override
         _systemRadius = 0f;
         foreach (var p in _planets)
             if (p.OrbitRadius > _systemRadius) _systemRadius = p.OrbitRadius;
@@ -364,6 +435,80 @@ public class SystemScene
                 if (_station.OrbitRadius * 1.1f > _systemRadius)
                     _systemRadius = _station.OrbitRadius * 1.1f;
             }
+        }
+
+        // Training mode: override stations at opposite ends
+        if (TrainingMode)
+        {
+            _trainingHostile = true;
+            float stationDist = _systemRadius * 0.7f;
+
+            // Find safe placement avoiding star and planets
+            Vector2 stationPos = new Vector2(-stationDist, 0);
+            Vector2 friendlyPos = new Vector2(stationDist, 0);
+            bool overlap = true;
+            for (int attempt = 0; attempt < 8 && overlap; attempt++)
+            {
+                overlap = false;
+                // Check star overlap
+                if (stationPos.Length() < _star.BodyRadius + 50f + 20f ||
+                    friendlyPos.Length() < _star.BodyRadius + 50f + 20f)
+                {
+                    overlap = true;
+                }
+                else
+                {
+                    // Check planet overlaps
+                    foreach (var p in _planets)
+                    {
+                        Vector2 pPos = new Vector2(
+                            MathF.Cos(p.CurrentAngle) * p.OrbitRadius,
+                            MathF.Sin(p.CurrentAngle) * p.OrbitRadius);
+                        float pr = p.BodyRadius + 50f + 20f;
+                        if (Vector2.Distance(stationPos, pPos) < pr ||
+                            Vector2.Distance(friendlyPos, pPos) < pr)
+                        {
+                            overlap = true;
+                            break;
+                        }
+                    }
+                }
+                if (overlap)
+                {
+                    // Rotate both stations around the star to find clear position
+                    float rotAngle = MathF.PI / 4f;
+                    stationPos = new Vector2(
+                        stationPos.X * MathF.Cos(rotAngle) - stationPos.Y * MathF.Sin(rotAngle),
+                        stationPos.X * MathF.Sin(rotAngle) + stationPos.Y * MathF.Cos(rotAngle));
+                    friendlyPos = new Vector2(-stationPos.X, -stationPos.Y);
+                }
+            }
+
+            // Empire station (hostile, level 5) — replaces normal station
+            _station = new Body
+            {
+                Name = "Empire Station",
+                BodyRadius = 50f,
+                Color = Color.Red,
+                X = stationPos.X,
+                Y = stationPos.Y
+            };
+            _stationHealth = _stationMaxHealth;
+            _stationDefenseLevel = 5;
+            InitStationDefenses();
+
+            // Friendly station (Federation, level 5) — opposite side
+            _trainingFriendlyStation = new Body
+            {
+                Name = "Federation Station",
+                BodyRadius = 50f,
+                Color = Color.LightBlue,
+                X = friendlyPos.X,
+                Y = friendlyPos.Y
+            };
+            _trainingFriendlyHealth = _stationMaxHealth;
+            _trainingTargetPos = friendlyPos;
+            InitFriendlyStationDefenses();
         }
 
         _spawnRadius = _systemRadius * 0.80f;
@@ -391,8 +536,14 @@ public class SystemScene
 
         _waypointTargets.Clear();
         _waypointIndex = 0;
-        if (_system.Station != null)
+        if (TrainingMode)
+        {
+            _waypointTargets.Add((new Vector2(_trainingFriendlyStation.X, _trainingFriendlyStation.Y), _trainingFriendlyStation.Name));
+        }
+        else if (_system.Station != null)
+        {
             _waypointTargets.Add((new Vector2(_station.X, _station.Y), _station.Name));
+        }
         _waypointPosition = _waypointTargets.Count > 0
             ? _waypointTargets[0].pos
             : Vector2.Zero;
@@ -415,7 +566,7 @@ public class SystemScene
         GenerateAsteroids();
 
         // Spawn enemies in hostile systems (scales with proximity to Trigor core)
-        if (_system.Hostility >= 3)
+        if (_system.Hostility >= 3 && !TrainingMode)
             SpawnHostileEnemies();
 
         // Spawn raiders for under-attack systems (non-hostile)
@@ -507,14 +658,21 @@ public class SystemScene
 
             if (_system.Station != null)
             {
-                _station.CurrentAngle += _station.OrbitSpeed * dt;
-                _station.X = MathF.Cos(_station.CurrentAngle) * _station.OrbitRadius;
-                _station.Y = MathF.Sin(_station.CurrentAngle) * _station.OrbitRadius;
+                if (!TrainingMode)
+                {
+                    _station.CurrentAngle += _station.OrbitSpeed * dt;
+                    _station.X = MathF.Cos(_station.CurrentAngle) * _station.OrbitRadius;
+                    _station.Y = MathF.Sin(_station.CurrentAngle) * _station.OrbitRadius;
+                }
             }
 
             // Rebuild waypoint targets
             _waypointTargets.Clear();
-            if (_system.Station != null)
+            if (TrainingMode)
+            {
+                _waypointTargets.Add((new Vector2(_trainingFriendlyStation.X, _trainingFriendlyStation.Y), _trainingFriendlyStation.Name));
+            }
+            else if (_system.Station != null)
                 _waypointTargets.Add((new Vector2(_station.X, _station.Y), _station.Name));
             if (_game != null)
             {
@@ -594,7 +752,7 @@ public class SystemScene
                         _trainingMenuSelection++;
                     if (up)
                         _trainingMenuSelection--;
-                    int max2 = 1;
+                    int max2 = 2;
                     if (_trainingMenuSelection < 0) _trainingMenuSelection = max2;
                     if (_trainingMenuSelection > max2) _trainingMenuSelection = 0;
                     if (enter)
@@ -602,6 +760,8 @@ public class SystemScene
                         if (_trainingMenuSelection == 0)
                             _trainingPaused = false;
                         else if (_trainingMenuSelection == 1)
+                            _trainingInvincible = !_trainingInvincible;
+                        else if (_trainingMenuSelection == 2)
                             _game.ExitTraining();
                     }
                     _prevKeyboard = keyboard;
@@ -628,7 +788,7 @@ public class SystemScene
 
             // Fuel consumption while moving in system
             float speed = _player.Velocity.Length();
-            if (speed > 10f && _player.Fuel > 0)
+            if (!_trainingInvincible && speed > 10f && _player.Fuel > 0)
             {
                 float fuelRate = 3f;
                 _player.Fuel = MathF.Max(0, _player.Fuel - (speed / _player.MaxSpeed) * fuelRate * dt * _player.FuelEfficiency);
@@ -640,7 +800,7 @@ public class SystemScene
                 (dist - _star.BodyRadius) / (_systemRadius - _star.BodyRadius), 0f, 1f);
             _temperature = 1f - MathF.Pow(norm, 0.5f);
 
-            if (!_exploding && (_temperature >= 1f || _player.Health <= 0))
+            if (!_trainingInvincible && !_exploding && (_temperature >= 1f || _player.Health <= 0))
             {
                 _exploding = true;
                 _explosionTimer = 0f;
@@ -713,7 +873,7 @@ public class SystemScene
             }
 
             float distToStation = Vector2.Distance(_player.Position, new Vector2(_station.X, _station.Y));
-            if (distToStation < 150f && _system.Hostility < 3)
+            if (distToStation < 150f && !StationIsHostile)
             {
                 if (keyboard.IsKeyDown(Keys.E) && prevKb.IsKeyUp(Keys.E))
                 {
@@ -723,12 +883,27 @@ public class SystemScene
                 }
             }
 
+            // Training mode: dock at friendly station
+            if (TrainingMode)
+            {
+                float distToFriendly = Vector2.Distance(_player.Position, new Vector2(_trainingFriendlyStation.X, _trainingFriendlyStation.Y));
+                if (distToFriendly < 150f)
+                {
+                    if (keyboard.IsKeyDown(Keys.E) && prevKb.IsKeyUp(Keys.E))
+                    {
+                        _docked = true;
+                        _player.Fuel = _player.MaxFuel;
+                        _player.Health = _player.MaxHealth;
+                    }
+                }
+            }
+
             // Fuel exchange prompt (when out of fuel)
             if (_player.Fuel <= 0 && !_exploding && !_gameOver)
             {
                 if (!_docked)
                 {
-                    if (keyboard.IsKeyDown(Keys.Y) && prevKb.IsKeyUp(Keys.Y) && _player.Health > _player.MaxHealth / 4)
+                    if (keyboard.IsKeyDown(Keys.Y) && prevKb.IsKeyUp(Keys.Y) && _player.Health > _player.MaxHealth / 4 && !_trainingInvincible)
                     {
                         _player.Health -= _player.MaxHealth / 4;
                         _player.Fuel += _player.MaxFuel / 4;
@@ -813,10 +988,11 @@ public class SystemScene
                 else if (_activeWeapon == 1 && hasLaser)
                 {
                     // Laser beam - fires forward from ship nose
-                    if (spaceHeld && _weaponCooldown <= 0f && _player.Fuel > 0)
+                    if (spaceHeld && _weaponCooldown <= 0f && (_trainingInvincible || _player.Fuel > 0))
                     {
                         _weaponCooldown = 0.1f;
-                        _player.Fuel = MathF.Max(0, _player.Fuel - 1.667f * dt);
+                        if (!_trainingInvincible)
+                            _player.Fuel = MathF.Max(0, _player.Fuel - 1.667f * dt);
 
                         float range = 18f;
                         Vector2 beamEnd = muzzlePos + Vector2.FromAngle(_player.Angle) * range;
@@ -878,7 +1054,7 @@ public class SystemScene
                         }
 
                         // Laser-station collision
-                        if (_system.Hostility >= 3 && _system.Station != null)
+                        if (StationIsHostile)
                         {
                             Vector2 stationPos = new(_station.X, _station.Y);
                             if (LineCircleIntersect(muzzlePos, beamEnd, stationPos, _station.BodyRadius))
@@ -1009,7 +1185,7 @@ public class SystemScene
                 }
 
                 // Missile-station collision
-                if (!remove && _system.Hostility >= 3 && _system.Station != null)
+                if (!remove && StationIsHostile)
                 {
                     Vector2 stationPos = new(_station.X, _station.Y);
                     if (Vector2.Distance(m.Position, stationPos) < _station.BodyRadius + 5f)
@@ -1134,9 +1310,13 @@ public class SystemScene
             }
 
             // Station turrets
-            if (_system.Hostility >= 3 && _system.Station != null && !_docked)
+            if (StationIsHostile && !_docked && _stationHealth > 0)
             {
                 UpdateStationTurrets(dt);
+            }
+            if (TrainingMode && !_docked && _trainingFriendlyHealth > 0)
+            {
+                UpdateFriendlyStationTurrets(dt);
             }
 
             // Bullet-enemy collisions
@@ -1206,7 +1386,7 @@ public class SystemScene
             }
 
             // Bullet-station collision
-            if (_system.Hostility >= 3 && _system.Station != null)
+            if (StationIsHostile)
             {
                 Vector2 stationPos = new(_station.X, _station.Y);
                 for (int i = _bullets.Count - 1; i >= 0; i--)
@@ -1221,12 +1401,28 @@ public class SystemScene
                 }
             }
 
+            // Training mode: enemy bullets hit friendly station
+            if (TrainingMode && _trainingFriendlyHealth > 0)
+            {
+                Vector2 friendlyPos = new(_trainingFriendlyStation.X, _trainingFriendlyStation.Y);
+                for (int i = _bullets.Count - 1; i >= 0; i--)
+                {
+                    var b = _bullets[i];
+                    if (b.IsPlayerBullet) continue;
+                    if (Vector2.Distance(b.Position, friendlyPos) < _trainingFriendlyStation.BodyRadius + 5f)
+                    {
+                        _bullets.RemoveAt(i);
+                        DamageFriendlyStation(2f);
+                    }
+                }
+            }
+
             // Enemy bullet - player collision
             for (int i = _bullets.Count - 1; i >= 0; i--)
             {
                 var b = _bullets[i];
                 if (b.IsPlayerBullet) continue;
-                if (Vector2.Distance(b.Position, _player.Position) < 22f)
+                if (!_trainingInvincible && Vector2.Distance(b.Position, _player.Position) < 22f)
                 {
                     _player.Health -= 2;
                     _bullets.RemoveAt(i);
@@ -1241,6 +1437,38 @@ public class SystemScene
                 _pickupMessage = "Raiders eliminated! System defense successful!";
                 _pickupTimer = 3f;
                 _showPickupDialog = true;
+            }
+
+            // Training mode station respawn timers
+            if (TrainingMode)
+            {
+                if (_trainingFriendlyRespawning)
+                {
+                    _trainingFriendlyRespawnTimer -= dt;
+                    if (_trainingFriendlyRespawnTimer <= 0f)
+                    {
+                        _trainingFriendlyRespawning = false;
+                        _trainingFriendlyHealth = _stationMaxHealth;
+                        InitFriendlyStationDefenses();
+                        _pickupMessage = "Federation Station restored!";
+                        _pickupTimer = 2f;
+                        _showPickupDialog = true;
+                    }
+                }
+                if (_empireStationRespawning)
+                {
+                    _empireStationRespawnTimer -= dt;
+                    if (_empireStationRespawnTimer <= 0f)
+                    {
+                        _empireStationRespawning = false;
+                        _stationHealth = _stationMaxHealth;
+                        _stationDefenseLevel = 5;
+                        InitStationDefenses();
+                        _pickupMessage = "Empire Station restored!";
+                        _pickupTimer = 2f;
+                        _showPickupDialog = true;
+                    }
+                }
             }
 
             // Spawn enemies in training mode
@@ -1487,7 +1715,7 @@ public class SystemScene
             }
 
             // Station defense upgrade (player-owned only)
-            if (_system.Faction == "Independent" && _system.Station != null &&
+            if (!TrainingMode && _system.Faction == "Independent" && _system.Station != null &&
                 _stationDefenseLevel < 5 &&
                 keyboard.IsKeyDown(Keys.U) && _prevKeyboard.IsKeyUp(Keys.U))
             {
@@ -1585,6 +1813,14 @@ public class SystemScene
         float sx = starScreenX + _station.X * ZOOM;
         float sy = starScreenY + _station.Y * ZOOM;
         DrawStation(sb, pixel, font, sx, sy, _station, t);
+
+        // Training mode: render friendly station
+        if (TrainingMode && !_trainingFriendlyRespawning)
+        {
+            float fx = starScreenX + _trainingFriendlyStation.X * ZOOM;
+            float fy = starScreenY + _trainingFriendlyStation.Y * ZOOM;
+            DrawStation(sb, pixel, font, fx, fy, _trainingFriendlyStation, t, useFriendlyData: true);
+        }
 
         // Lifepod
         if (_lifepodActive)
@@ -2155,7 +2391,7 @@ public class SystemScene
             DrawSpacedText(sb, titleFont, title,
                 new Microsoft.Xna.Framework.Vector2(tX, tY), Color.Yellow);
 
-            string[] opts = { "Resume", "End Training" };
+            string[] opts = { "Resume", $"Invincibility: {(_trainingInvincible ? "ON" : "OFF")}", "End Training" };
             for (int i = 0; i < opts.Length; i++)
             {
                 bool sel = i == _trainingMenuSelection;
@@ -2210,15 +2446,20 @@ public class SystemScene
     }
 
     private void DrawStation(SpriteBatch sb, Texture2D pixel, SpriteFont font,
-        float sx, float sy, Body station, float t)
+        float sx, float sy, Body station, float t, bool useFriendlyData = false)
     {
         float pulse = MathF.Sin(t * 2f) * 0.05f + 1f;
         float r = station.BodyRadius * ZOOM * pulse;
 
-        bool isEnemy = _system.Hostility >= 3 || _underAttack;
+        bool isEnemy = useFriendlyData ? false : (StationIsHostile || _underAttack);
         Color baseColor = isEnemy ? new Color(200, 60, 60) : Color.LightBlue;
         Color glowColor = isEnemy ? new Color(255, 80, 80) : Color.Cyan;
         Color dimGlow = isEnemy ? new Color(180, 40, 40) : Color.LightBlue;
+
+        var turrets = useFriendlyData ? _friendlyTurrets : _stationTurrets;
+        var ringSections = useFriendlyData ? _friendlyRingSections : _ringSections;
+        bool hasShield = useFriendlyData ? _friendlyHasShield : _stationHasShield;
+        float stationHealth = useFriendlyData ? _trainingFriendlyHealth : _stationHealth;
 
         for (int i = 4; i >= 0; i--)
         {
@@ -2240,7 +2481,7 @@ public class SystemScene
         float ringR = r + 8f * ZOOM;
         float ringW = 6f * ZOOM;
         int arcSteps = 8;
-        foreach (var rs in _ringSections)
+        foreach (var rs in ringSections)
         {
             if (!rs.Active) continue;
             float segAngle = MathF.PI * 2f / 4f;
@@ -2268,10 +2509,23 @@ public class SystemScene
                 float y2 = sy + MathF.Sin(t2) * innerR;
                 DrawLine(sb, pixel, x1, y1, x2, y2, new Color(255, 200, 100) * 0.5f);
             }
+
+            // Ring section health bar
+            float midAngle = (startA + endA) / 2f;
+            float barX = sx + MathF.Cos(midAngle) * (ringR + 12f * ZOOM);
+            float barY = sy + MathF.Sin(midAngle) * (ringR + 12f * ZOOM);
+            int barW = (int)(40f * ZOOM);
+            int barH = (int)(4f * ZOOM);
+            float hpPct = rs.Health / RING_SECTION_MAX_HEALTH;
+            // Background
+            sb.Draw(pixel, new Microsoft.Xna.Framework.Rectangle((int)(barX - barW / 2f), (int)barY, barW, barH), new Color(40, 0, 0, 180));
+            // Fill
+            Color barColor = hpPct > 0.5f ? Color.Yellow : (hpPct > 0.25f ? new Color(255, 140, 0) : Color.Red);
+            sb.Draw(pixel, new Microsoft.Xna.Framework.Rectangle((int)(barX - barW / 2f), (int)barY, (int)(barW * hpPct), barH), barColor);
         }
 
         // Shield (level 5, all sections active)
-        if (_stationHasShield)
+        if (hasShield)
         {
             float shieldR = ringR + 6f * ZOOM;
             float shieldPulse = MathF.Sin(t * 3f) * 0.03f + 0.12f;
@@ -2280,7 +2534,7 @@ public class SystemScene
         }
 
         // Turret dots on station body
-        foreach (var turret in _stationTurrets)
+        foreach (var turret in turrets)
         {
             if (!turret.Active) continue;
             float tx = sx + turret.Position.X;
@@ -2297,19 +2551,24 @@ public class SystemScene
             glowColor);
 
         // Health bar (enemy stations) or dock prompt (friendly)
-        if (isEnemy)
+        if (isEnemy || useFriendlyData)
         {
             // Health bar above station
             int barW = (int)(r * 1.5f);
             int barH = 4;
             float barX = sx - barW / 2f;
             float barY = sy - r - antH - 14f;
-            float hpPct = _stationHealth / _stationMaxHealth;
-            sb.Draw(pixel, new Microsoft.Xna.Framework.Rectangle((int)barX, (int)barY, barW, barH), new Color(40, 0, 0, 180));
-            sb.Draw(pixel, new Microsoft.Xna.Framework.Rectangle((int)barX, (int)barY, (int)(barW * hpPct), barH), Color.Red);
+            float hpPct = stationHealth / _stationMaxHealth;
+            Color bg = useFriendlyData ? new Color(0, 0, 40, 180) : new Color(40, 0, 0, 180);
+            Color fg = useFriendlyData ? Color.Cyan : Color.Red;
+            sb.Draw(pixel, new Microsoft.Xna.Framework.Rectangle((int)barX, (int)barY, barW, barH), bg);
+            sb.Draw(pixel, new Microsoft.Xna.Framework.Rectangle((int)barX, (int)barY, (int)(barW * hpPct), barH), fg);
+        }
 
-            float dist = Vector2.Distance(_player.Position, new Vector2(station.X, station.Y));
-            if (dist < 200f && !_docked)
+        float dockDist = Vector2.Distance(_player.Position, new Vector2(station.X, station.Y));
+        if (isEnemy)
+        {
+            if (dockDist < 200f && !_docked)
             {
                 string warn = "Enemy Station";
                 var ws = font.MeasureString(warn);
@@ -2322,8 +2581,7 @@ public class SystemScene
         else
         {
             // Dock prompt
-            float dist = Vector2.Distance(_player.Position, new Vector2(station.X, station.Y));
-            if (dist < 150f && !_docked)
+            if (dockDist < 150f && !_docked)
             {
                 string prompt = "[E] Dock";
                 var ps = font.MeasureString(prompt);
@@ -2430,7 +2688,7 @@ public class SystemScene
         textY += 22;
 
         // Station defense status & upgrade (player-owned stations only)
-        if (_system.Faction == "Independent" && _system.Station != null)
+        if (!TrainingMode && _system.Faction == "Independent" && _system.Station != null)
         {
             int defLvl = _stationDefenseLevel;
             Color defColor = defLvl == 0 ? Color.Gray : defLvl >= 5 ? Color.Gold : Color.LightBlue;
@@ -3085,8 +3343,16 @@ public class SystemScene
             float stx = cx + _station.X * scale;
             float sty = cy + _station.Y * scale;
             float stR = MathF.Max(_station.BodyRadius * scale, 2f);
-            Color stColor = _system.Hostility >= 3 ? new Color(200, 60, 60) : Color.LightBlue;
+            Color stColor = StationIsHostile ? new Color(200, 60, 60) : Color.LightBlue;
             FillCircle(sb, pixel, stx, sty, stR, stColor);
+
+            // Training mode: draw friendly station too
+            if (TrainingMode)
+            {
+                float ftx = cx + _trainingFriendlyStation.X * scale;
+                float fty = cy + _trainingFriendlyStation.Y * scale;
+                FillCircle(sb, pixel, ftx, fty, stR, Color.LightBlue);
+            }
         }
 
         // Player as moving icon
@@ -3412,11 +3678,19 @@ public class SystemScene
     private void SpawnScouts()
     {
         int count = 3;
+        Vector2 origin = _player.Position;
+        AiState startState = AiState.Idle;
+        if (TrainingMode)
+        {
+            count = 10;
+            origin = new Vector2(_station.X, _station.Y);
+            startState = AiState.Attack;
+        }
         for (int i = 0; i < count; i++)
         {
             float spawnAngle = RandF() * MathF.Tau;
             float spawnDist = 300f + RandF() * 300f;
-            Vector2 pos = _player.Position + Vector2.FromAngle(spawnAngle) * spawnDist;
+            Vector2 pos = origin + Vector2.FromAngle(spawnAngle) * spawnDist;
             float a = RandF() * MathF.Tau;
             _enemies.Add(new EnemyShip
             {
@@ -3427,7 +3701,7 @@ public class SystemScene
                 MaxHealth = 3f,
                 Type = "scout",
                 ShootCooldown = RandF() * 2f,
-                AiState = AiState.Idle,
+                AiState = startState,
                 StateTimer = RandF() * 2f,
                 OrbitAngle = spawnAngle
             });
@@ -3473,9 +3747,11 @@ public class SystemScene
 
     private void UpdateEnemyAI(ref EnemyShip e, float dt)
     {
-        Vector2 toPlayer = _player.Position - e.Position;
-        float distToPlayer = toPlayer.Length();
-        Vector2 dirToPlayer = distToPlayer > 0.01f ? toPlayer.Normalized() : Vector2.Zero;
+        // In training mode, enemies target the friendly station instead of the player
+        Vector2 targetPos = (_trainingTargetPos.X != 0 || _trainingTargetPos.Y != 0) ? _trainingTargetPos : _player.Position;
+        Vector2 toTarget = targetPos - e.Position;
+        float distToPlayer = toTarget.Length();
+        Vector2 dirToPlayer = distToPlayer > 0.01f ? toTarget.Normalized() : Vector2.Zero;
 
         e.StateTimer -= dt;
         e.ShootCooldown -= dt;
@@ -3500,8 +3776,8 @@ public class SystemScene
                 {
                     e.AiState = AiState.Orbit;
                     e.OrbitAngle = MathF.Atan2(
-                        e.Position.Y - _player.Position.Y,
-                        e.Position.X - _player.Position.X);
+                        e.Position.Y - targetPos.Y,
+                        e.Position.X - targetPos.X);
                     e.StateTimer = 2f + RandF() * 2f;
                 }
                 break;
@@ -3510,12 +3786,12 @@ public class SystemScene
             {
                 e.OrbitAngle += dt * 0.5f;
                 float targetDist = 150f + RandF() * 80f;
-                Vector2 orbitTarget = _player.Position + Vector2.FromAngle(e.OrbitAngle) * targetDist;
-                Vector2 toTarget = orbitTarget - e.Position;
-                float tDist = toTarget.Length();
+                Vector2 orbitTarget = targetPos + Vector2.FromAngle(e.OrbitAngle) * targetDist;
+                Vector2 toOrbitTarget = orbitTarget - e.Position;
+                float tDist = toOrbitTarget.Length();
                 if (tDist > 10f)
                 {
-                    e.Velocity += toTarget.Normalized() * dt * 200f;
+                    e.Velocity += toOrbitTarget.Normalized() * dt * 200f;
                     if (e.Velocity.Length() > maxSpeed)
                         e.Velocity = e.Velocity.Normalized() * maxSpeed;
                 }
@@ -3633,7 +3909,7 @@ public class SystemScene
                     End = beamEnd,
                     Timer = 0.08f
                 });
-                if (LineCircleIntersect(turretPos, beamEnd, _player.Position, 22f))
+                if (!_trainingInvincible && LineCircleIntersect(turretPos, beamEnd, _player.Position, 22f))
                 {
                     _player.Health -= 1;
                 }
@@ -3656,6 +3932,95 @@ public class SystemScene
             }
 
             _ringSections[i] = rs;
+        }
+    }
+
+    private void UpdateFriendlyStationTurrets(float dt)
+    {
+        Vector2 stationPos = new(_trainingFriendlyStation.X, _trainingFriendlyStation.Y);
+        if (_enemies.Count == 0) return;
+
+        // Find nearest enemy
+        EnemyShip nearest = default;
+        float nearestDist = float.MaxValue;
+        for (int i = 0; i < _enemies.Count; i++)
+        {
+            float d = Vector2.Distance(_enemies[i].Position, stationPos);
+            if (d < nearestDist)
+            {
+                nearestDist = d;
+                nearest = _enemies[i];
+            }
+        }
+
+        Vector2 toTarget = nearest.Position - stationPos;
+        if (toTarget.Length() < 1f) return;
+        Vector2 dirToTarget = toTarget.Normalized();
+
+        // Basic gun turrets
+        float gunRange = 500f;
+        for (int i = 0; i < _friendlyTurrets.Count; i++)
+        {
+            var t = _friendlyTurrets[i];
+            if (!t.Active) continue;
+            t.Cooldown -= dt;
+            if (t.Cooldown <= 0f && nearestDist < gunRange)
+            {
+                t.Cooldown = 0.25f;
+                Vector2 worldPos = stationPos + t.Position;
+                Vector2 bulletVel = dirToTarget * BULLET_SPEED;
+                _bullets.Add(new Bullet
+                {
+                    Position = worldPos,
+                    Velocity = bulletVel,
+                    Lifetime = BULLET_LIFETIME,
+                    IsPlayerBullet = false
+                });
+            }
+            _friendlyTurrets[i] = t;
+        }
+
+        // Ring section turrets
+        float laserRange = 450f;
+        float missileRange = 500f;
+        float ringR = _trainingFriendlyStation.BodyRadius + 16f;
+        for (int i = 0; i < _friendlyRingSections.Count; i++)
+        {
+            var rs = _friendlyRingSections[i];
+            if (!rs.Active) continue;
+
+            // Laser
+            rs.LaserCooldown -= dt;
+            if (rs.LaserCooldown <= 0f && nearestDist < laserRange)
+            {
+                rs.LaserCooldown = 0.4f;
+                Vector2 turretPos = stationPos + Vector2.FromAngle(rs.Angle) * ringR;
+                Vector2 beamEnd = turretPos + dirToTarget * 25f;
+                _laserBeams.Add(new LaserBeam
+                {
+                    Start = turretPos,
+                    End = beamEnd,
+                    Timer = 0.08f
+                });
+            }
+
+            // Missile
+            rs.MissileCooldown -= dt;
+            if (rs.MissileCooldown <= 0f && nearestDist < missileRange)
+            {
+                rs.MissileCooldown = 2f;
+                Vector2 turretPos = stationPos + Vector2.FromAngle(rs.Angle) * ringR;
+                Vector2 missileVel = dirToTarget * 200f;
+                _missiles.Add(new Missile
+                {
+                    Position = turretPos,
+                    Velocity = missileVel,
+                    Lifetime = 3f,
+                    TargetIndex = -1
+                });
+            }
+
+            _friendlyRingSections[i] = rs;
         }
     }
 
@@ -3682,6 +4047,15 @@ public class SystemScene
                 {
                     rs.Active = false;
                     _stationHasShield = false;
+                    // Ring section explosion
+                    float ringR = _station.BodyRadius + 8f + 8f;
+                    Vector2 ringPos = new Vector2(_station.X, _station.Y) + Vector2.FromAngle(rs.Angle) * ringR;
+                    _enemyExplosions.Add(new EnemyExplosion
+                    {
+                        Position = ringPos,
+                        Timer = 0f,
+                        Duration = 1.2f
+                    });
                 }
                 _ringSections[i] = rs;
                 return;
@@ -3693,19 +4067,83 @@ public class SystemScene
         if (_stationHealth <= 0f)
         {
             _stationHealth = 0f;
-            _system.Hostility = 0;
-            _system.Faction = "Independent";
-            _system.Station.DefenseLevel = 0;
-            Vector2 stationPos = new(_station.X, _station.Y);
+            if (TrainingMode)
+            {
+                _empireStationRespawning = true;
+                _empireStationRespawnTimer = 15f;
+                Vector2 stationPos = new(_station.X, _station.Y);
+                _enemyExplosions.Add(new EnemyExplosion
+                {
+                    Position = stationPos,
+                    Timer = 0f,
+                    Duration = 1.2f
+                });
+            }
+            else
+            {
+                _system.Hostility = 0;
+                _system.Faction = "Independent";
+                _system.Station.DefenseLevel = 0;
+                Vector2 stationPos = new(_station.X, _station.Y);
+                _enemyExplosions.Add(new EnemyExplosion
+                {
+                    Position = stationPos,
+                    Timer = 0f,
+                    Duration = 1.2f
+                });
+                _pickupMessage = "Station Captured!";
+                _pickupTimer = 3f;
+                _showPickupDialog = true;
+            }
+        }
+    }
+
+    private void DamageFriendlyStation(float damage)
+    {
+        if (_friendlyHasShield)
+        {
+            _friendlyHasShield = false;
+            return;
+        }
+
+        // Damage the first active ring section
+        for (int i = 0; i < _friendlyRingSections.Count; i++)
+        {
+            var rs = _friendlyRingSections[i];
+            if (!rs.Active) continue;
+            rs.Health -= damage;
+            if (rs.Health <= 0f)
+            {
+                rs.Active = false;
+                _friendlyHasShield = false;
+                // Ring section explosion
+                float ringR = _trainingFriendlyStation.BodyRadius + 8f + 8f;
+                Vector2 ringPos = new Vector2(_trainingFriendlyStation.X, _trainingFriendlyStation.Y) + Vector2.FromAngle(rs.Angle) * ringR;
+                _enemyExplosions.Add(new EnemyExplosion
+                {
+                    Position = ringPos,
+                    Timer = 0f,
+                    Duration = 1.2f
+                });
+            }
+            _friendlyRingSections[i] = rs;
+            return;
+        }
+
+        // No ring sections — damage station health
+        _trainingFriendlyHealth -= damage;
+        if (_trainingFriendlyHealth <= 0f)
+        {
+            _trainingFriendlyHealth = 0f;
+            _trainingFriendlyRespawning = true;
+            _trainingFriendlyRespawnTimer = 15f;
+            Vector2 stationPos = new(_trainingFriendlyStation.X, _trainingFriendlyStation.Y);
             _enemyExplosions.Add(new EnemyExplosion
             {
                 Position = stationPos,
                 Timer = 0f,
                 Duration = 1.2f
             });
-            _pickupMessage = "Station Captured!";
-            _pickupTimer = 3f;
-            _showPickupDialog = true;
         }
     }
 
