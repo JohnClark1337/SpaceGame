@@ -82,10 +82,10 @@ public class NewsService
         // Faction propaganda articles
         _articles.Add(new NewsArticle
         {
-            Headline = "Federation Council Affirms Commitment to Peace",
+            Headline = "Atlas Federation Council Affirms Commitment to Peace",
             Body = "The Terran Federation Council has issued a statement reaffirming its dedication to protecting all sovereign systems from external aggression. Naval patrols have been increased along the frontier.",
-            Source = "Federation News Network",
-            Faction = "Terran Federation",
+            Source = "Atlas Federation News Network",
+            Faction = "Atlas Federation",
             Timestamp = 0,
             IsBreaking = false
         });
@@ -191,13 +191,13 @@ public class NewsService
 
     private string PickSource(StarSystemData sys)
     {
-        string[] federationSources = { "Federation News Network", "The Proxima Times", "Spica Star", "Regulus Dispatch" };
+        string[] federationSources = { "Atlas Federation News Network", "The Proxima Times", "Spica Star", "Regulus Dispatch" };
         string[] empireSources = { "Imperial Herald", "Voice of the Empire", "TrigCorp Media", "The Dark Star" };
         string[] independentSources = { "Free Worlds Press", "Centauri Chronicle", "Lyra Beacon", "Draco Gazette" };
 
         return (sys.Faction ?? "Independent") switch
         {
-            "Terran Federation" => federationSources[_rng.Next(federationSources.Length)],
+            "Atlas Federation" => federationSources[_rng.Next(federationSources.Length)],
             "Trigor Empire" => empireSources[_rng.Next(empireSources.Length)],
             _ => independentSources[_rng.Next(independentSources.Length)]
         };

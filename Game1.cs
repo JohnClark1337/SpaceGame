@@ -3015,13 +3015,13 @@ public class Game1 : Game
     {
         var sys = _galaxy.FindSystemById(systemId);
         if (sys == null || sys.Hostility < 3 || _activeAttacks.ContainsKey(systemId)) return;
-        _activeAttacks[systemId] = new AttackState { Timer = AttackDuration, Attacker = "Terran Federation" };
-        _statusMessage = $"Terran Federation is attacking {sys.Name}!";
+        _activeAttacks[systemId] = new AttackState { Timer = AttackDuration, Attacker = "Atlas Federation" };
+        _statusMessage = $"Atlas Federation is attacking {sys.Name}!";
         _statusTimer = 5f;
         _galaxy.NewsService?.PostBreakingNews(
-            $"Federation Strikes Back at {sys.Name}",
-            $"Terran Federation naval forces have launched a counter-offensive against {sys.Name}. 'Freedom will prevail,' stated Fleet Command.",
-            "Federation News Network", "Terran Federation");
+            $"Atlas Federation Strikes Back at {sys.Name}",
+            $"Atlas Federation naval forces have launched a counter-offensive against {sys.Name}. 'Freedom will prevail,' stated Fleet Command.",
+            "Atlas Federation News Network", "Atlas Federation");
     }
 
     public void RepelAttack(string systemId)
@@ -3089,7 +3089,7 @@ public class Game1 : Game
             _galaxy.NewsService?.PostFactionNews(
                 decision.FederationNewsHeadline,
                 decision.FederationNewsBody,
-                "Federation News Network", "Terran Federation");
+                "Atlas Federation News Network", "Atlas Federation");
         }
 
         // Empire actions
@@ -3161,16 +3161,16 @@ public class Game1 : Game
         if (!_activeAttacks.TryGetValue(systemId, out var state)) return;
         string attacker = state.Attacker;
 
-        if (attacker == "Terran Federation")
+        if (attacker == "Atlas Federation")
         {
             sys.Hostility = 0;
-            sys.Faction = "Terran Federation";
+            sys.Faction = "Atlas Federation";
             if (sys.Station != null) sys.Station.DefenseLevel = 0;
-            _statusMessage = $"Terran Federation has captured {sys.Name}!";
+            _statusMessage = $"Atlas Federation has captured {sys.Name}!";
             _galaxy.NewsService?.PostBreakingNews(
-                $"Federation Liberates {sys.Name}",
+                $"Atlas Federation Liberates {sys.Name}",
                 $"The Terran Federation has successfully captured {sys.Name}, dealing a blow to Trigor Empire aggression in the sector.",
-                "Federation News Network", "Terran Federation");
+                "Atlas Federation News Network", "Atlas Federation");
         }
         else
         {
@@ -3267,7 +3267,7 @@ public class Game1 : Game
         // Federation systems: auto-upgrade to level 3
         var fedSystems = _galaxy.Systems
             .Where(s => s.Station != null && s.Station.DefenseLevel < 3)
-            .Where(s => s.Faction == "Terran Federation")
+            .Where(s => s.Faction == "Atlas Federation")
             .ToList();
         if (fedSystems.Count > 0)
         {
@@ -3332,7 +3332,7 @@ public class Game1 : Game
         var candidates = _galaxy.Systems
             .Where(s => s.Station != null &&
                 s.Station.DefenseLevel >= 3 && s.Station.DefenseLevel < 5)
-            .Where(s => s.Faction == "Terran Federation")
+            .Where(s => s.Faction == "Atlas Federation")
             .ToList();
         if (candidates.Count == 0) return;
 
@@ -3445,7 +3445,7 @@ public class Game1 : Game
     {
         return faction switch
         {
-            "Terran Federation" => new Color(60, 130, 255),
+            "Atlas Federation" => new Color(60, 130, 255),
             "Trigor Empire" => new Color(255, 60, 30),
             "Independent" => new Color(60, 200, 60),
             _ => Color.Gray
@@ -3485,8 +3485,8 @@ public class Game1 : Game
         string nameB = sysB?.Name ?? b;
         _galaxy.NewsService?.PostBreakingNews(
             $"Route Reopened: {nameA} - {nameB}",
-            $"Federation forces have successfully cleared the blockade between {nameA} and {nameB}. Normal travel resumes.",
-            "Federation News Network", "Terran Federation");
+            $"Atlas Federation forces have successfully cleared the blockade between {nameA} and {nameB}. Normal travel resumes.",
+            "Atlas Federation News Network", "Atlas Federation");
     }
 
     private static string GetDirection(Vector2 from, Vector2 to)

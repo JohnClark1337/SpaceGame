@@ -1387,7 +1387,7 @@ public class SystemScene
                         _trainingFriendlyRespawning = false;
                         _trainingFriendlyHealth = _stationMaxHealth;
                         InitFriendlyStationDefenses();
-                        _pickupMessage = "Federation Station restored!";
+                        _pickupMessage = "Atlas Federation Station restored!";
                         _pickupTimer = 2f;
                         _showPickupDialog = true;
                     }
@@ -2384,7 +2384,7 @@ public class SystemScene
                 lines.Add((enemyNames[i], false, i));
             lines.Add(("-- Stations --", true, null));
             string[] stationNames = { "Empire Station L1", "Empire Station L2", "Empire Station L3", "Empire Station L4", "Empire Station L5",
-                                      "Federation Station L1", "Federation Station L2", "Federation Station L3", "Federation Station L4", "Federation Station L5" };
+                                      "Atlas Federation Station L1", "Atlas Federation Station L2", "Atlas Federation Station L3", "Atlas Federation Station L4", "Atlas Federation Station L5" };
             for (int i = 0; i < stationNames.Length; i++)
                 lines.Add((stationNames[i], false, 5 + i));
 
@@ -3676,7 +3676,7 @@ public class SystemScene
         {
             _trainingFriendlyStation = new Body
             {
-                Name = $"Federation Station L{level}",
+                Name = $"Atlas Federation Station L{level}",
                 BodyRadius = 50f,
                 Color = Color.LightBlue,
                 X = pos.X,
