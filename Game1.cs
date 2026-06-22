@@ -22,6 +22,7 @@ public class Game1 : Game
     private RouteManager _routeManager = null!;
     private readonly Starfield _starfield = new();
     private float _aiTickTimer;
+    private float _aiCaptureTimer;
 
     public RouteManager RouteManager => _routeManager;
     public Galaxy Galaxy => _galaxy;
@@ -59,6 +60,8 @@ public class Game1 : Game
     private int _inventoryTab;
     private int _invScroll;
     private int _invSelection;
+    private string _invMsgText = "";
+    private float _invMsgTimer;
     private int _priceScroll;
     private bool _equipSelectMode;
     private int _equipSelectSlotIdx;
@@ -144,6 +147,7 @@ public class Game1 : Game
         _galaxy.LoadData();
         _routeManager.SetGalaxy(_galaxy);
         _aiTickTimer = 8f;
+        _aiCaptureTimer = 30f;
         _galaxy.ActiveQuests.Clear();
         _galaxy.TargetSystem = null;
 
@@ -434,9 +438,31 @@ public class Game1 : Game
                         var entry = _player.Consumables[_invSelection];
                         if (entry.Id == "energy_canister")
                         {
-                            _player.UseEnergyCanister();
-                            if (_invSelection >= _player.Consumables.Count)
-                                _invSelection = Math.Max(0, _player.Consumables.Count - 1);
+                            if (_player.Fuel >= _player.MaxFuel)
+                            {
+                                _invMsgText = "Fuel Already Full";
+                                _invMsgTimer = 2f;
+                            }
+                            else
+                            {
+                                _player.UseEnergyCanister();
+                                if (_invSelection >= _player.Consumables.Count)
+                                    _invSelection = Math.Max(0, _player.Consumables.Count - 1);
+                            }
+                        }
+                        else if (entry.Id == "fuel_cell")
+                        {
+                            if (_player.Fuel >= _player.MaxFuel)
+                            {
+                                _invMsgText = "Fuel Already Full";
+                                _invMsgTimer = 2f;
+                            }
+                            else
+                            {
+                                _player.UseFuelCell();
+                                if (_invSelection >= _player.Consumables.Count)
+                                    _invSelection = Math.Max(0, _player.Consumables.Count - 1);
+                            }
                         }
                     }
                 }
@@ -659,6 +685,24 @@ public class Game1 : Game
                     _aiTickTimer = 4f;
                     _routeManager.AiTick(_player.CurrentSystemId);
                 }
+            }
+
+            // AI station capture tick (every 30 seconds)
+            if (_player.CurrentSystemId != null)
+            {
+                _aiCaptureTimer -= dt;
+                if (_aiCaptureTimer <= 0f)
+                {
+                    _aiCaptureTimer = 30f;
+                    AiCaptureTick();
+                }
+            }
+
+            if (_invMsgTimer > 0f)
+            {
+                _invMsgTimer -= dt;
+                if (_invMsgTimer <= 0f)
+                    _invMsgText = "";
             }
 
             _starfield.Update(dt, _player.Velocity);
@@ -1584,7 +1628,8 @@ public class Game1 : Game
                 float stAngle = sys.Station.Angle;
                 float stx = mapCx + MathF.Cos(stAngle) * sys.Station.OrbitRadius * mScale;
                 float sty = mapCy + MathF.Sin(stAngle) * sys.Station.OrbitRadius * mScale;
-                FillCircle(stx, sty, MathF.Max(sys.Station.Radius * mScale, 2f), Color.LightBlue);
+                Color stCol = sys.Hostility >= 3 ? new Color(200, 60, 60) : Color.LightBlue;
+                FillCircle(stx, sty, MathF.Max(sys.Station.Radius * mScale, 2f), stCol);
             }
 
             string mapLabel = "System";
@@ -1919,7 +1964,8 @@ public class Game1 : Game
             float stx = cx + MathF.Cos(stAngle) * sys.Station.OrbitRadius * scale;
             float sty = cy + MathF.Sin(stAngle) * sys.Station.OrbitRadius * scale;
             float stR = MathF.Max(sys.Station.Radius * scale, 2f);
-            FillCircle(stx, sty, stR, Color.LightBlue);
+            Color stCol = sys.Hostility >= 3 ? new Color(200, 60, 60) : Color.LightBlue;
+            FillCircle(stx, sty, stR, stCol);
 
             var stLbl = sys.Station.Name;
             var stSz = _font.MeasureString(stLbl);
@@ -1933,6 +1979,18 @@ public class Game1 : Game
         float ply = cy + _player.Position.Y * scale;
         FillCircle(plx, ply, 4f, Color.White);
         DrawCircle(plx, ply, 6f, Color.White);
+
+        // Asteroids on system map (small white squares)
+        if (_systemScene != null)
+        {
+            float aSize = 2f;
+            foreach (var ast in _systemScene.Asteroids)
+            {
+                float ax = cx + ast.Position.X * scale;
+                float ay = cy + ast.Position.Y * scale;
+                _spriteBatch.Draw(_pixel, new Microsoft.Xna.Framework.Rectangle((int)(ax - aSize), (int)(ay - aSize), (int)(aSize * 2), (int)(aSize * 2)), Color.White * 0.5f);
+            }
+        }
 
         // Quest targets in this system
         float qy = ScreenHeight - 60;
@@ -2201,6 +2259,21 @@ public class Game1 : Game
             DrawInventoryEquipment(new Microsoft.Xna.Framework.Vector2(textX, textY), px + panelW - 20);
         else if (_inventoryTab == 3)
             DrawInventoryConsumables(new Microsoft.Xna.Framework.Vector2(textX, textY), px + panelW - 20);
+
+        // Inventory message overlay (e.g. "Fuel Already Full")
+        if (_invMsgTimer > 0f && !string.IsNullOrEmpty(_invMsgText))
+        {
+            float msgW = 300f;
+            float msgH = 40f;
+            float msgX = (ScreenWidth - msgW) / 2f;
+            float msgY = py + panelH + 30f;
+            _spriteBatch.Draw(_pixel, new Microsoft.Xna.Framework.Rectangle((int)msgX, (int)msgY, (int)msgW, (int)msgH),
+                new Color(0, 0, 0, 200));
+            var msgLabelSz = _font.MeasureString(_invMsgText);
+            DrawSpacedText(_font, _invMsgText,
+                new Microsoft.Xna.Framework.Vector2(msgX + (msgW - msgLabelSz.X) / 2f, msgY + (msgH - msgLabelSz.Y) / 2f),
+                Color.Lime);
+        }
     }
 
     private void DrawInventoryQuestItems(Microsoft.Xna.Framework.Vector2 pos, float rightX)
@@ -2473,6 +2546,66 @@ public class Game1 : Game
         }
 
         return lines;
+    }
+
+    private void AiCaptureTick()
+    {
+        // Find a non-hostile system with a station to capture
+        var targets = _galaxy.Systems
+            .Where(s => s.Hostility < 3 && s.Station != null && s.Id != _player.CurrentSystemId)
+            .ToList();
+        if (targets.Count == 0) return;
+
+        // Pick a random target
+        var target = targets[Random.Shared.Next(targets.Count)];
+
+        // Check if it's reachable from hostile territory (within 2 hops of a hostile system)
+        bool reachable = false;
+        foreach (var conn in target.Connections)
+        {
+            var neighbor = _galaxy.FindSystemById(conn);
+            if (neighbor != null && (neighbor.Hostility >= 3 || neighbor.Faction == "Trigor Empire"))
+            {
+                reachable = true;
+                break;
+            }
+        }
+        if (!reachable)
+        {
+            // Check 2-hop reachability
+            foreach (var conn in target.Connections)
+            {
+                var neighbor = _galaxy.FindSystemById(conn);
+                if (neighbor == null) continue;
+                foreach (var conn2 in neighbor.Connections)
+                {
+                    var neighbor2 = _galaxy.FindSystemById(conn2);
+                    if (neighbor2 != null && (neighbor2.Hostility >= 3 || neighbor2.Faction == "Trigor Empire"))
+                    {
+                        reachable = true;
+                        break;
+                    }
+                }
+                if (reachable) break;
+            }
+        }
+        if (!reachable) return;
+
+        // Capture the station
+        target.Hostility = 5;
+        target.Faction = "Trigor Empire";
+
+        // Block a random route to/from this system
+        if (target.Connections.Count > 0)
+        {
+            var blockedConn = target.Connections[Random.Shared.Next(target.Connections.Count)];
+            _routeManager.BlockRoute(target.Id, blockedConn);
+        }
+
+        // Notify player if in galaxy view
+        string msg = $"Trigor Empire has captured {target.Name}!";
+        _statusMessage = msg;
+        _statusTimer = 5f;
     }
 
     private void DrawStatusMessage()

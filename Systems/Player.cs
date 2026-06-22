@@ -90,6 +90,20 @@ public class Player
         return true;
     }
 
+    public bool UseFuelCell()
+    {
+        if (Fuel >= MaxFuel)
+            return false;
+        var entry = Consumables.FirstOrDefault(c => c.Id == "fuel_cell");
+        if (entry == null || entry.Quantity <= 0)
+            return false;
+        entry.Quantity--;
+        if (entry.Quantity <= 0)
+            Consumables.RemoveAll(c => c.Id == "fuel_cell");
+        Fuel = MathF.Min(MaxFuel, Fuel + 20f);
+        return true;
+    }
+
     public string? GetEquippedWeapon(int slotIndex)
     {
         string key = slotIndex == 0 ? "weapon1" : "weapon2";

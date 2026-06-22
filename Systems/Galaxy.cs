@@ -65,10 +65,19 @@ public class Galaxy
             {
                 Id = "energy_canister",
                 Name = "Energy Canister",
-                Description = "Refuels the ship by 50%",
+                Description = "Refuels the ship by 20%",
                 Cost = 50,
                 EffectType = "fuel_refill",
                 EffectValue = 0.2f
+            },
+            new ConsumableDef
+            {
+                Id = "fuel_cell",
+                Name = "Fuel Cell",
+                Description = "Adds 20 fuel instantly",
+                Cost = 0,
+                EffectType = "fuel_add",
+                EffectValue = 20f
             }
         };
 

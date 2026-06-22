@@ -14,6 +14,7 @@
     { "id": "pt", "name": "Platinum", "symbol": "Pt", "category": "precious", "description": "Rare catalyst metal with high industrial demand.", "basePrice": 120, "volume": 1 },
     { "id": "au", "name": "Gold", "symbol": "Au", "category": "precious", "description": "Corrosion-resistant precious metal for critical electronics.", "basePrice": 90, "volume": 1 },
     { "id": "nd", "name": "Neodymium", "symbol": "Nd", "category": "rare", "description": "Rare-earth element essential for powerful magnets.", "basePrice": 75, "volume": 1 },
-    { "id": "missile_ammo", "name": "Missile Ammo", "symbol": "M", "category": "ammo", "description": "Standard guided missile munitions.", "basePrice": 25, "volume": 1 }
+    { "id": "missile_ammo", "name": "Missile Ammo", "symbol": "M", "category": "ammo", "description": "Standard guided missile munitions.", "basePrice": 25, "volume": 1 },
+    { "id": "fuel_cell", "name": "Fuel Cell", "symbol": "FC", "category": "fuel", "description": "A compact energy cell that can be refined into ship fuel.", "basePrice": 20, "volume": 1 }
   ]
 }

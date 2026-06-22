@@ -27,6 +27,8 @@ public class SystemScene
     private Body _star;
     private List<Body> _planets = new();
     private Body _station;
+    private float _stationHealth;
+    private const float _stationMaxHealth = 100f;
     private float _spawnRadius;
     private const float ZOOM = 3.75f;
     private float _systemRadius;
@@ -124,6 +126,30 @@ public class SystemScene
     }
     private List<EnemyExplosion> _enemyExplosions = new();
 
+    public struct Asteroid
+    {
+        public Vector2 Position;
+        public float Radius;
+        public float Health;
+        public int Seed;
+    }
+    private List<Asteroid> _asteroids = new();
+    public List<Asteroid> Asteroids => _asteroids;
+
+    private struct AsteroidLoot
+    {
+        public Vector2 Position;
+        public float Lifetime;
+        public string Type; // "resource" or "fuel_cell"
+        public string ResourceId;
+    }
+    private List<AsteroidLoot> _asteroidLoot = new();
+    private List<EnemyExplosion> _asteroidExplosions = new();
+
+    private bool _showPickupDialog;
+    private string _pickupMessage = "";
+    private float _pickupTimer;
+
     public bool Docked => _docked;
     public bool TrainingMode { get; set; }
     public StarSystemData? CurrentSystem => _system;
@@ -149,6 +175,10 @@ public class SystemScene
         _missiles.Clear();
         _laserBeams.Clear();
         _bullets.Clear();
+        _asteroids.Clear();
+        _asteroidLoot.Clear();
+        _asteroidExplosions.Clear();
+        _showPickupDialog = false;
     }
 
     private void Initialize()
@@ -192,6 +222,7 @@ public class SystemScene
                 OrbitSpeed = sd.OrbitSpeed,
                 CurrentAngle = sd.Angle,
             };
+            _stationHealth = _stationMaxHealth;
         }
 
         _systemRadius = 0f;
@@ -220,6 +251,10 @@ public class SystemScene
         _nearPlanet = false;
         _lifepodActive = false;
         _bullets.Clear();
+        _asteroids.Clear();
+        _asteroidLoot.Clear();
+        _asteroidExplosions.Clear();
+        _showPickupDialog = false;
         _enemies.Clear();
         _enemyExplosions.Clear();
 
@@ -254,6 +289,13 @@ public class SystemScene
             };
         }
         _particlesInitialized = true;
+
+        // Generate asteroids
+        GenerateAsteroids();
+
+        // Spawn enemies in hostile systems (scales with proximity to Trigor core)
+        if (_system.Hostility >= 3)
+            SpawnHostileEnemies();
     }
 
     private static float RandF() { return (float)Random.Shared.NextDouble(); }
@@ -337,6 +379,22 @@ public class SystemScene
                     else if (q.ObjectiveType == "travel")
                         _waypointTargets.Add((Vector2.Zero, q.Name));
                 }
+            }
+            // Nearest asteroid waypoint
+            if (_asteroids.Count > 0)
+            {
+                float minDist = float.MaxValue;
+                Vector2 minPos = Vector2.Zero;
+                foreach (var roid in _asteroids)
+                {
+                    float dd = Vector2.Distance(_player.Position, roid.Position);
+                    if (dd < minDist)
+                    {
+                        minDist = dd;
+                        minPos = roid.Position;
+                    }
+                }
+                _waypointTargets.Add((minPos, "Asteroid"));
             }
             if (_waypointIndex >= _waypointTargets.Count)
                 _waypointIndex = 0;
@@ -508,7 +566,7 @@ public class SystemScene
             }
 
             float distToStation = Vector2.Distance(_player.Position, new Vector2(_station.X, _station.Y));
-            if (distToStation < 150f)
+            if (distToStation < 150f && _system.Hostility < 3)
             {
                 if (keyboard.IsKeyDown(Keys.E) && prevKb.IsKeyUp(Keys.E))
                 {
@@ -530,7 +588,16 @@ public class SystemScene
                     }
                     if (keyboard.IsKeyDown(Keys.C) && prevKb.IsKeyUp(Keys.C) && _player.HasEnergyCanister)
                     {
-                        _player.UseEnergyCanister();
+                        if (_player.Fuel >= _player.MaxFuel)
+                        {
+                            _pickupMessage = "Fuel Already Full";
+                            _pickupTimer = 2f;
+                            _showPickupDialog = true;
+                        }
+                        else
+                        {
+                            _player.UseEnergyCanister();
+                        }
                     }
                 }
             }
@@ -638,6 +705,55 @@ public class SystemScene
                                 }
                             }
                         }
+
+                        // Laser-asteroid collision
+                        for (int ai = _asteroids.Count - 1; ai >= 0; ai--)
+                        {
+                            var ast = _asteroids[ai];
+                            if (LineCircleIntersect(muzzlePos, beamEnd, ast.Position, ast.Radius))
+                            {
+                                ast.Health -= beamDmg;
+                                if (ast.Health <= 0f)
+                                {
+                                    _asteroidExplosions.Add(new EnemyExplosion
+                                    {
+                                        Position = ast.Position,
+                                        Timer = 0f,
+                                        Duration = 0.6f
+                                    });
+                                    GenerateLoot(ast.Position);
+                                    _asteroids.RemoveAt(ai);
+                                    RespawnAsteroid();
+                                }
+                                else
+                                    _asteroids[ai] = ast;
+                            }
+                        }
+
+                        // Laser-station collision
+                        if (_system.Hostility >= 3 && _system.Station != null)
+                        {
+                            Vector2 stationPos = new(_station.X, _station.Y);
+                            if (LineCircleIntersect(muzzlePos, beamEnd, stationPos, _station.BodyRadius))
+                            {
+                                _stationHealth -= beamDmg;
+                                if (_stationHealth <= 0f)
+                                {
+                                    _stationHealth = 0f;
+                                    _system.Hostility = 0;
+                                    _system.Faction = "Independent";
+                                    _enemyExplosions.Add(new EnemyExplosion
+                                    {
+                                        Position = stationPos,
+                                        Timer = 0f,
+                                        Duration = 1.2f
+                                    });
+                                    _pickupMessage = "Station Captured!";
+                                    _pickupTimer = 3f;
+                                    _showPickupDialog = true;
+                                }
+                            }
+                        }
                     }
                 }
                 else if (_activeWeapon == 2 && hasMissile)
@@ -730,6 +846,62 @@ public class SystemScene
                         remove = true;
                     }
                 }
+
+                // Missile-asteroid collision
+                if (!remove)
+                {
+                    for (int ai = _asteroids.Count - 1; ai >= 0; ai--)
+                    {
+                        var ast = _asteroids[ai];
+                        if (Vector2.Distance(m.Position, ast.Position) < ast.Radius + 5f)
+                        {
+                            ast.Health -= 5f;
+                            if (ast.Health <= 0f)
+                            {
+                                _asteroidExplosions.Add(new EnemyExplosion
+                                {
+                                    Position = ast.Position,
+                                    Timer = 0f,
+                                    Duration = 0.6f
+                                });
+                                GenerateLoot(ast.Position);
+                                _asteroids.RemoveAt(ai);
+                                RespawnAsteroid();
+                            }
+                            else
+                                _asteroids[ai] = ast;
+                            remove = true;
+                            break;
+                        }
+                    }
+                }
+
+                // Missile-station collision
+                if (!remove && _system.Hostility >= 3 && _system.Station != null)
+                {
+                    Vector2 stationPos = new(_station.X, _station.Y);
+                    if (Vector2.Distance(m.Position, stationPos) < _station.BodyRadius + 5f)
+                    {
+                        _stationHealth -= 5f;
+                        remove = true;
+                        if (_stationHealth <= 0f)
+                        {
+                            _stationHealth = 0f;
+                            _system.Hostility = 0;
+                            _system.Faction = "Independent";
+                            _enemyExplosions.Add(new EnemyExplosion
+                            {
+                                Position = stationPos,
+                                Timer = 0f,
+                                Duration = 1.2f
+                            });
+                            _pickupMessage = "Station Captured!";
+                            _pickupTimer = 3f;
+                            _showPickupDialog = true;
+                        }
+                    }
+                }
+
                 else if (!remove)
                 {
                     // No target - drift
@@ -770,6 +942,72 @@ public class SystemScene
                     _enemyExplosions[i] = ex;
             }
 
+            // Update asteroid explosions
+            for (int i = _asteroidExplosions.Count - 1; i >= 0; i--)
+            {
+                var ex = _asteroidExplosions[i];
+                ex.Timer += dt;
+                if (ex.Timer >= ex.Duration)
+                    _asteroidExplosions.RemoveAt(i);
+                else
+                    _asteroidExplosions[i] = ex;
+            }
+
+            // Update loot lifetime
+            for (int i = _asteroidLoot.Count - 1; i >= 0; i--)
+            {
+                var loot = _asteroidLoot[i];
+                loot.Lifetime -= dt;
+                if (loot.Lifetime <= 0f)
+                    _asteroidLoot.RemoveAt(i);
+                else
+                    _asteroidLoot[i] = loot;
+            }
+
+            // Loot pickup
+            if (!_docked && !_showPickupDialog)
+            {
+                for (int i = _asteroidLoot.Count - 1; i >= 0; i--)
+                {
+                    var loot = _asteroidLoot[i];
+                    if (Vector2.Distance(_player.Position, loot.Position) < 40f &&
+                        keyboard.IsKeyDown(Keys.E) && prevKb.IsKeyUp(Keys.E))
+                    {
+                        if (loot.Type == "fuel_cell")
+                        {
+                            var existing = _player.Consumables.FirstOrDefault(c => c.Id == "fuel_cell");
+                            if (existing != null)
+                                existing.Quantity++;
+                            else
+                                _player.Consumables.Add(new InventoryEntry { Id = "fuel_cell", Quantity = 1 });
+                            _pickupMessage = "Picked up Fuel Cell (use in Inventory)";
+                        }
+                        else
+                        {
+                            var existing = _player.Resources.FirstOrDefault(r => r.Id == loot.ResourceId);
+                            if (existing != null)
+                                existing.Quantity++;
+                            else
+                                _player.Resources.Add(new InventoryEntry { Id = loot.ResourceId, Quantity = 1 });
+                            var resDef = _game?.Galaxy?.FindResource(loot.ResourceId);
+                            string resName = resDef?.Name ?? loot.ResourceId;
+                            _pickupMessage = $"Picked up {resName}";
+                        }
+                        _asteroidLoot.RemoveAt(i);
+                        _showPickupDialog = true;
+                        _pickupTimer = 3f;
+                    }
+                }
+            }
+
+            // Pickup dialog timer
+            if (_showPickupDialog)
+            {
+                _pickupTimer -= dt;
+                if (_pickupTimer <= 0f)
+                    _showPickupDialog = false;
+            }
+
             // Enemy AI
             for (int i = 0; i < _enemies.Count; i++)
             {
@@ -808,6 +1046,71 @@ public class SystemScene
                 }
                 if (hit)
                     _bullets.RemoveAt(i);
+            }
+
+            // Bullet-asteroid collisions
+            for (int i = _bullets.Count - 1; i >= 0; i--)
+            {
+                var b = _bullets[i];
+                if (!b.IsPlayerBullet) continue;
+                bool hit = false;
+                for (int j = _asteroids.Count - 1; j >= 0; j--)
+                {
+                    var ast2 = _asteroids[j];
+                    if (Vector2.Distance(b.Position, ast2.Position) < ast2.Radius + 5f)
+                    {
+                        ast2.Health -= 1f;
+                        if (ast2.Health <= 0f)
+                        {
+                            _asteroidExplosions.Add(new EnemyExplosion
+                            {
+                                Position = ast2.Position,
+                                Timer = 0f,
+                                Duration = 0.6f
+                            });
+                            GenerateLoot(ast2.Position);
+                            _asteroids.RemoveAt(j);
+                            RespawnAsteroid();
+                        }
+                        else
+                            _asteroids[j] = ast2;
+                        hit = true;
+                        break;
+                    }
+                }
+                if (hit)
+                    _bullets.RemoveAt(i);
+            }
+
+            // Bullet-station collision
+            if (_system.Hostility >= 3 && _system.Station != null)
+            {
+                Vector2 stationPos = new(_station.X, _station.Y);
+                for (int i = _bullets.Count - 1; i >= 0; i--)
+                {
+                    var b = _bullets[i];
+                    if (!b.IsPlayerBullet) continue;
+                    if (Vector2.Distance(b.Position, stationPos) < _station.BodyRadius + 5f)
+                    {
+                        _stationHealth -= 1f;
+                        _bullets.RemoveAt(i);
+                        if (_stationHealth <= 0f)
+                        {
+                            _stationHealth = 0f;
+                            _system.Hostility = 0;
+                            _system.Faction = "Independent";
+                            _enemyExplosions.Add(new EnemyExplosion
+                            {
+                                Position = stationPos,
+                                Timer = 0f,
+                                Duration = 1.2f
+                            });
+                            _pickupMessage = "Station Captured!";
+                            _pickupTimer = 3f;
+                            _showPickupDialog = true;
+                        }
+                    }
+                }
             }
 
             // Enemy bullet - player collision
@@ -899,7 +1202,7 @@ public class SystemScene
                 var resources = _game.Galaxy.AllResources
                     .Where(r => economy.HasResource(_system.Id, r.Id))
                     .ToList();
-                int marketItemCount = resources.Count + 1; // +1 for energy canister
+                int marketItemCount = resources.Count + 2; // +1 energy canister, +1 fuel cell
                 bool backDocked = keyboard.IsKeyDown(Keys.Back) && _prevKeyboard.IsKeyUp(Keys.Back);
                 if (downDocked)
                     _dockedMarketSelection = (_dockedMarketSelection + 1) % Math.Max(1, marketItemCount);
@@ -914,16 +1217,33 @@ public class SystemScene
                     }
                     else
                     {
-                        // Buy energy canister
-                        int canisterCost = 50;
-                        if (_player.Credits >= canisterCost && _player.UsedCargo < _player.CargoCapacity)
+                        // Buy consumables
+                        int consumableIdx = _dockedMarketSelection - resources.Count;
+                        if (consumableIdx == 0) // energy canister
                         {
-                            _player.Credits -= canisterCost;
-                            var existing = _player.Consumables.FirstOrDefault(c => c.Id == "energy_canister");
-                            if (existing != null)
-                                existing.Quantity++;
-                            else
-                                _player.Consumables.Add(new InventoryEntry { Id = "energy_canister", Quantity = 1 });
+                            int canisterCost = 50;
+                            if (_player.Credits >= canisterCost && _player.UsedCargo < _player.CargoCapacity)
+                            {
+                                _player.Credits -= canisterCost;
+                                var existing = _player.Consumables.FirstOrDefault(c => c.Id == "energy_canister");
+                                if (existing != null)
+                                    existing.Quantity++;
+                                else
+                                    _player.Consumables.Add(new InventoryEntry { Id = "energy_canister", Quantity = 1 });
+                            }
+                        }
+                        else if (consumableIdx == 1) // fuel cell
+                        {
+                            int fuelCellCost = 25;
+                            if (_player.Credits >= fuelCellCost && _player.UsedCargo < _player.CargoCapacity)
+                            {
+                                _player.Credits -= fuelCellCost;
+                                var existing = _player.Consumables.FirstOrDefault(c => c.Id == "fuel_cell");
+                                if (existing != null)
+                                    existing.Quantity++;
+                                else
+                                    _player.Consumables.Add(new InventoryEntry { Id = "fuel_cell", Quantity = 1 });
+                            }
                         }
                     }
                 }
@@ -1134,6 +1454,64 @@ public class SystemScene
             }
         }
 
+        // Asteroids
+        foreach (var ast in _asteroids)
+        {
+            float ax = center.X + (ast.Position.X - _player.Position.X) * ZOOM;
+            float ay = center.Y + (ast.Position.Y - _player.Position.Y) * ZOOM;
+            float asr = ast.Radius * ZOOM;
+            float pulse = MathF.Sin(t * 0.5f + ast.Seed) * 0.1f + 0.9f;
+
+            // Compute irregular polygon vertices
+            int segs = 10;
+            var verts = new Vector2[segs];
+            for (int si = 0; si < segs; si++)
+            {
+                float aAngle = MathF.PI * 2f * si / segs + ast.Seed * 0.01f;
+                float variation = 0.8f + MathF.Sin(ast.Seed + aAngle * 3f) * 0.2f;
+                float r = asr * variation * pulse;
+                verts[si] = new Vector2(
+                    ax + MathF.Cos(aAngle) * r,
+                    ay + MathF.Sin(aAngle) * r);
+            }
+
+            // Fill with triangles from center
+            Color fillColor = new Color(110, 90, 70);
+            for (int si = 0; si < segs; si++)
+            {
+                int next = (si + 1) % segs;
+                FillTriangle(sb, pixel, ax, ay,
+                    verts[si].X, verts[si].Y,
+                    verts[next].X, verts[next].Y, fillColor);
+            }
+
+            // Interior crack lines
+            int crackCount = 3 + (ast.Seed & 3);
+            for (int ci = 0; ci < crackCount; ci++)
+            {
+                float cAngle = MathF.PI * 2f * ci / crackCount + ast.Seed * 0.1f;
+                float innerR = asr * (0.15f + ((ast.Seed + ci * 7) % 7) * 0.06f);
+                float outerR = asr * (0.4f + ((ast.Seed + ci * 13) % 7) * 0.08f);
+                float bend = 0.2f + ((ast.Seed + ci * 3) % 5) * 0.15f;
+                float x1 = ax + MathF.Cos(cAngle) * innerR;
+                float y1 = ay + MathF.Sin(cAngle) * innerR;
+                float mx = ax + MathF.Cos(cAngle + bend) * (innerR + outerR) * 0.5f;
+                float my = ay + MathF.Sin(cAngle + bend) * (innerR + outerR) * 0.5f;
+                float x2 = ax + MathF.Cos(cAngle + bend * 0.7f) * outerR;
+                float y2 = ay + MathF.Sin(cAngle + bend * 0.7f) * outerR;
+                Color crackColor = new Color(55, 45, 35);
+                DrawLine(sb, pixel, x1, y1, mx, my, crackColor);
+                DrawLine(sb, pixel, mx, my, x2, y2, crackColor);
+            }
+
+            // Opaque outline
+            for (int si = 0; si < segs; si++)
+            {
+                int next = (si + 1) % segs;
+                DrawLine(sb, pixel, verts[si].X, verts[si].Y, verts[next].X, verts[next].Y, new Color(160, 140, 110));
+            }
+        }
+
         // Bullets
         foreach (var b in _bullets)
         {
@@ -1231,6 +1609,21 @@ public class SystemScene
             }
         }
 
+        // Asteroid explosions
+        foreach (var ex in _asteroidExplosions)
+        {
+            float progress = ex.Timer / ex.Duration;
+            float alpha = 1f - progress;
+            float rx = center.X + (ex.Position.X - _player.Position.X) * ZOOM;
+            float ry = center.Y + (ex.Position.Y - _player.Position.Y) * ZOOM;
+            for (int i = 4; i >= 0; i--)
+            {
+                float r = (4f + i * 5f + progress * 25f) * ZOOM;
+                float a = (0.04f + i * 0.05f) * alpha;
+                FillCircle(sb, pixel, rx, ry, r, new Color(180, 140, 80) * a);
+            }
+        }
+
         // Player ship (always at center)
         DrawShip(sb, pixel, center, t, 1f, Color.White, _player.Angle, _player.Velocity);
 
@@ -1250,6 +1643,40 @@ public class SystemScene
             int barY = (int)ey + 14;
             sb.Draw(pixel, new Microsoft.Xna.Framework.Rectangle(barX, barY, barW, barH), new Color(40, 0, 0, 180));
             sb.Draw(pixel, new Microsoft.Xna.Framework.Rectangle(barX, barY, (int)(barW * hpPct), barH), Color.Red);
+        }
+
+        // Asteroid loot
+        foreach (var loot in _asteroidLoot)
+        {
+            float lx = center.X + (loot.Position.X - _player.Position.X) * ZOOM;
+            float ly = center.Y + (loot.Position.Y - _player.Position.Y) * ZOOM;
+            float pulse = MathF.Sin(t * 3f) * 0.3f + 0.7f;
+            if (loot.Type == "fuel_cell")
+            {
+                // Square
+                int size = (int)(24 * pulse);
+                sb.Draw(pixel, new Microsoft.Xna.Framework.Rectangle((int)lx - size / 2, (int)ly - size / 2, size, size), Color.Yellow * 0.9f);
+            }
+            else
+            {
+                // Circle (resource orb)
+                float r = 18f * pulse;
+                FillCircle(sb, pixel, lx, ly, r, Color.Cyan * 0.8f);
+            }
+        }
+
+        // Pickup notification dialog
+        if (_showPickupDialog)
+        {
+            float pw = 400f;
+            float ph = 60f;
+            float px2 = (screenW - pw) / 2f;
+            float py2 = screenH * 0.7f;
+            sb.Draw(pixel, new Microsoft.Xna.Framework.Rectangle((int)px2, (int)py2, (int)pw, (int)ph), new Color(0, 0, 0, 200));
+            var msgSz = font.MeasureString(_pickupMessage);
+            DrawSpacedText(sb, font, _pickupMessage,
+                new Microsoft.Xna.Framework.Vector2(px2 + (pw - msgSz.X) / 2f, py2 + (ph - msgSz.Y) / 2f),
+                Color.Lime);
         }
 
         // Docked menu / HUD
@@ -1629,39 +2056,70 @@ public class SystemScene
         float pulse = MathF.Sin(t * 2f) * 0.05f + 1f;
         float r = station.BodyRadius * ZOOM * pulse;
 
+        bool isEnemy = _system.Hostility >= 3;
+        Color baseColor = isEnemy ? new Color(200, 60, 60) : Color.LightBlue;
+        Color glowColor = isEnemy ? new Color(255, 80, 80) : Color.Cyan;
+        Color dimGlow = isEnemy ? new Color(180, 40, 40) : Color.LightBlue;
+
         for (int i = 4; i >= 0; i--)
         {
             float gr = r + i * 5f * ZOOM;
             float ga = 0.03f + i * 0.04f;
-            FillCircle(sb, pixel, sx, sy, gr, Color.LightBlue * ga);
+            FillCircle(sb, pixel, sx, sy, gr, dimGlow * ga);
         }
 
         // Main body
-        FillCircle(sb, pixel, sx, sy, r, Color.LightBlue * 0.6f);
-        DrawCircle(sb, pixel, sx, sy, r, Color.Cyan);
+        FillCircle(sb, pixel, sx, sy, r, baseColor * 0.6f);
+        DrawCircle(sb, pixel, sx, sy, r, glowColor);
 
         // Antenna
         float antH = 10f * ZOOM * pulse;
-        DrawLine(sb, pixel, sx, sy - r, sx, sy - r - antH, Color.Cyan);
-        DrawLine(sb, pixel, sx - 4, sy - r - antH, sx + 4, sy - r - antH, Color.Cyan);
+        DrawLine(sb, pixel, sx, sy - r, sx, sy - r - antH, glowColor);
+        DrawLine(sb, pixel, sx - 4, sy - r - antH, sx + 4, sy - r - antH, glowColor);
 
         // Label
         var label = station.Name;
         var labelSize = font.MeasureString(label);
         DrawSpacedText(sb, font, label,
             new Microsoft.Xna.Framework.Vector2(sx - labelSize.X / 2f, sy + r + 4f),
-            Color.Cyan);
+            glowColor);
 
-        // Dock prompt
-        float dist = Vector2.Distance(_player.Position, new Vector2(station.X, station.Y));
-        if (dist < 150f && !_docked)
+        // Health bar (enemy stations) or dock prompt (friendly)
+        if (isEnemy)
         {
-            string prompt = "[E] Dock";
-            var ps = font.MeasureString(prompt);
-            byte flash = (byte)((MathF.Sin(t * 4f) * 0.3f + 0.7f) * 255);
-            DrawSpacedText(sb, font, prompt,
-                new Microsoft.Xna.Framework.Vector2(sx - ps.X / 2f, sy - r - 22f),
-                new Color(255, 255, 100, (int)flash));
+            // Health bar above station
+            int barW = (int)(r * 1.5f);
+            int barH = 4;
+            float barX = sx - barW / 2f;
+            float barY = sy - r - antH - 14f;
+            float hpPct = _stationHealth / _stationMaxHealth;
+            sb.Draw(pixel, new Microsoft.Xna.Framework.Rectangle((int)barX, (int)barY, barW, barH), new Color(40, 0, 0, 180));
+            sb.Draw(pixel, new Microsoft.Xna.Framework.Rectangle((int)barX, (int)barY, (int)(barW * hpPct), barH), Color.Red);
+
+            float dist = Vector2.Distance(_player.Position, new Vector2(station.X, station.Y));
+            if (dist < 200f && !_docked)
+            {
+                string warn = "Enemy Station";
+                var ws = font.MeasureString(warn);
+                byte flash = (byte)((MathF.Sin(t * 4f) * 0.3f + 0.7f) * 255);
+                DrawSpacedText(sb, font, warn,
+                    new Microsoft.Xna.Framework.Vector2(sx - ws.X / 2f, sy - r - antH - 30f),
+                    new Color(255, 100, 100, (int)flash));
+            }
+        }
+        else
+        {
+            // Dock prompt
+            float dist = Vector2.Distance(_player.Position, new Vector2(station.X, station.Y));
+            if (dist < 150f && !_docked)
+            {
+                string prompt = "[E] Dock";
+                var ps = font.MeasureString(prompt);
+                byte flash = (byte)((MathF.Sin(t * 4f) * 0.3f + 0.7f) * 255);
+                DrawSpacedText(sb, font, prompt,
+                    new Microsoft.Xna.Framework.Vector2(sx - ps.X / 2f, sy - r - 22f),
+                    new Color(255, 255, 100, (int)flash));
+            }
         }
     }
 
@@ -1907,7 +2365,7 @@ public class SystemScene
 
         // Energy canister row
         bool canBuyCan = _player.Credits >= 50 && _player.UsedCargo < _player.CargoCapacity;
-        bool canSelected = _dockedMarketSelection >= resources.Count;
+        bool canSelected = _dockedMarketSelection == resources.Count;
         Color canColor = canSelected ? Color.White : Color.LightGray;
         if (canSelected)
             sb.Draw(pixel, new Microsoft.Xna.Framework.Rectangle(textX, textY, panelW - 40, rowH - 1),
@@ -1926,6 +2384,31 @@ public class SystemScene
         DrawSpacedText(sb, font, canQty > 0 ? $"{canQty}" : "-",
             new Microsoft.Xna.Framework.Vector2(textX + cCargo, textY), canColor);
         if (canSelected && canBuyCan)
+            DrawSpacedText(sb, font, "[Enter] Buy",
+                new Microsoft.Xna.Framework.Vector2(textX + cHint, textY), Color.Lime * 0.7f);
+        textY += rowH;
+
+        // Fuel cell row
+        bool canBuyFC = _player.Credits >= 25 && _player.UsedCargo < _player.CargoCapacity;
+        bool fcSelected = _dockedMarketSelection == resources.Count + 1;
+        Color fcColor = fcSelected ? Color.White : Color.LightGray;
+        if (fcSelected)
+            sb.Draw(pixel, new Microsoft.Xna.Framework.Rectangle(textX, textY, panelW - 40, rowH - 1),
+                new Color(40, 50, 70));
+        DrawSpacedText(sb, font, fcSelected ? ">" : " ",
+            new Microsoft.Xna.Framework.Vector2(textX + cSel, textY), fcColor);
+        DrawSpacedText(sb, font, "[Fuel Cell]",
+            new Microsoft.Xna.Framework.Vector2(textX + cName, textY), fcColor);
+        DrawSpacedText(sb, font, "25cr",
+            new Microsoft.Xna.Framework.Vector2(textX + cBuy, textY), fcSelected && canBuyFC ? Color.Lime : fcColor);
+        DrawSpacedText(sb, font, "---",
+            new Microsoft.Xna.Framework.Vector2(textX + cSell, textY), Color.Gray * 0.5f);
+        DrawSpacedText(sb, font, "---",
+            new Microsoft.Xna.Framework.Vector2(textX + cStock, textY), Color.Gray * 0.5f);
+        int fcQty = _player.Consumables.FirstOrDefault(c => c.Id == "fuel_cell")?.Quantity ?? 0;
+        DrawSpacedText(sb, font, fcQty > 0 ? $"{fcQty}" : "-",
+            new Microsoft.Xna.Framework.Vector2(textX + cCargo, textY), fcColor);
+        if (fcSelected && canBuyFC)
             DrawSpacedText(sb, font, "[Enter] Buy",
                 new Microsoft.Xna.Framework.Vector2(textX + cHint, textY), Color.Lime * 0.7f);
     }
@@ -2182,7 +2665,8 @@ public class SystemScene
             float stx = cx + _station.X * scale;
             float sty = cy + _station.Y * scale;
             float stR = MathF.Max(_station.BodyRadius * scale, 2f);
-            FillCircle(sb, pixel, stx, sty, stR, Color.LightBlue);
+            Color stColor = _system.Hostility >= 3 ? new Color(200, 60, 60) : Color.LightBlue;
+            FillCircle(sb, pixel, stx, sty, stR, stColor);
         }
 
         // Player as moving icon
@@ -2197,6 +2681,16 @@ public class SystemScene
             float ey = cy + e.Position.Y * scale;
             if (ex >= mx - 2 && ex <= mx + mapSize + 2 && ey >= my - 2 && ey <= my + mapSize + 2)
                 FillCircle(sb, pixel, ex, ey, 2.5f, new Color(255, 140, 0));
+        }
+
+        // Asteroids on minimap (small white squares)
+        float asSize = 1.5f;
+        foreach (var ast in _asteroids)
+        {
+            float ax = cx + ast.Position.X * scale;
+            float ay = cy + ast.Position.Y * scale;
+            if (ax >= mx - asSize && ax <= mx + mapSize + asSize && ay >= my - asSize && ay <= my + mapSize + asSize)
+                sb.Draw(pixel, new Microsoft.Xna.Framework.Rectangle((int)(ax - asSize), (int)(ay - asSize), (int)(asSize * 2), (int)(asSize * 2)), Color.White * 0.6f);
         }
 
         // Quest objective markers on minimap (actual positions)
@@ -2375,6 +2869,126 @@ public class SystemScene
             _player.QuestItems.Add(new InventoryEntry { Id = "princess_lifepod", Quantity = 1 });
     }
 
+    private void GenerateAsteroids()
+    {
+        int count = 10 + Random.Shared.Next(11); // 10-20
+        float safeMargin = _star.BodyRadius * 1.5f;
+        for (int i = 0; i < count; i++)
+        {
+            for (int attempt = 0; attempt < 20; attempt++)
+            {
+                float angle = RandF() * MathF.PI * 2f;
+                float dist = safeMargin + RandF() * (_systemRadius - safeMargin);
+                Vector2 pos = new(MathF.Cos(angle) * dist, MathF.Sin(angle) * dist);
+
+                // Check not too close to planets or station
+                bool blocked = false;
+                if (_planets.Any(p => Vector2.Distance(pos, new Vector2(p.X, p.Y)) < p.BodyRadius * 2.5f))
+                    blocked = true;
+                if (!blocked && _system.Station != null &&
+                    Vector2.Distance(pos, new Vector2(_station.X, _station.Y)) < _station.BodyRadius * 3f)
+                    blocked = true;
+
+                if (!blocked)
+                {
+                    float radius = 16f + RandF() * 24f; // 16-40
+                    _asteroids.Add(new Asteroid
+                    {
+                        Position = pos,
+                        Radius = radius,
+                        Health = 3f,
+                        Seed = Random.Shared.Next()
+                    });
+                    break;
+                }
+            }
+        }
+    }
+
+    private void RespawnAsteroid()
+    {
+        float safeMargin = _star.BodyRadius * 1.5f;
+        for (int attempt = 0; attempt < 20; attempt++)
+        {
+            float angle = RandF() * MathF.PI * 2f;
+            float dist = safeMargin + RandF() * (_systemRadius - safeMargin);
+            Vector2 pos = new(MathF.Cos(angle) * dist, MathF.Sin(angle) * dist);
+            bool blocked = false;
+            if (_planets.Any(p => Vector2.Distance(pos, new Vector2(p.X, p.Y)) < p.BodyRadius * 2.5f))
+                blocked = true;
+            if (!blocked && _system.Station != null &&
+                Vector2.Distance(pos, new Vector2(_station.X, _station.Y)) < _station.BodyRadius * 3f)
+                blocked = true;
+            if (!blocked)
+            {
+                float radius = 16f + RandF() * 24f;
+                _asteroids.Add(new Asteroid
+                {
+                    Position = pos,
+                    Radius = radius,
+                    Health = 3f,
+                    Seed = Random.Shared.Next()
+                });
+                return;
+            }
+        }
+    }
+
+    private void GenerateLoot(Vector2 position)
+    {
+        if (Random.Shared.Next(4) == 0) // 25% fuel cell
+        {
+            _asteroidLoot.Add(new AsteroidLoot
+            {
+                Position = position,
+                Lifetime = 30f,
+                Type = "fuel_cell",
+                ResourceId = "fuel_cell"
+            });
+        }
+        else // 75% resource, weighted by station economy
+        {
+            var allResources = _game?.Galaxy?.AllResources;
+            var economy = _game?.Galaxy?.Economy;
+            if (allResources != null && allResources.Count > 0 && economy != null)
+            {
+                float totalWeight = 0f;
+                var weights = new List<float>();
+                var resIds = new List<string>();
+                foreach (var res in allResources)
+                {
+                    if (res.Id == "fuel_cell") continue;
+                    int stock = economy.GetStock(_system.Id, res.Id);
+                    float weight = stock > 0 ? stock + 10f : 0.5f;
+                    weights.Add(weight);
+                    resIds.Add(res.Id);
+                    totalWeight += weight;
+                }
+
+                if (totalWeight > 0f)
+                {
+                    float roll = RandF() * totalWeight;
+                    float acc = 0f;
+                    for (int i = 0; i < resIds.Count; i++)
+                    {
+                        acc += weights[i];
+                        if (roll <= acc)
+                        {
+                            _asteroidLoot.Add(new AsteroidLoot
+                            {
+                                Position = position,
+                                Lifetime = 30f,
+                                Type = "resource",
+                                ResourceId = resIds[i]
+                            });
+                            return;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     private void SpawnScouts()
     {
         int count = 3;
@@ -2395,6 +3009,43 @@ public class SystemScene
                 ShootCooldown = RandF() * 2f,
                 AiState = AiState.Idle,
                 StateTimer = RandF() * 2f,
+                OrbitAngle = spawnAngle
+            });
+        }
+    }
+
+    private void SpawnHostileEnemies()
+    {
+        int count = 3;
+        var trigorSys = _game?.Galaxy?.FindSystemById("trigor");
+        if (trigorSys != null)
+        {
+            float dx = _system.X - trigorSys.X;
+            float dy = _system.Y - trigorSys.Y;
+            float dist = MathF.Sqrt(dx * dx + dy * dy);
+            float maxDist = 15000f;
+            float t = MathF.Max(0f, MathF.Min(1f, dist / maxDist));
+            // t=0 (at trigor) → count=9, t=1 (far) → count=3
+            count = 3 + (int)((1f - t) * 6f);
+        }
+
+        for (int i = 0; i < count; i++)
+        {
+            float spawnAngle = RandF() * MathF.Tau;
+            float spawnDist = 200f + RandF() * 400f;
+            Vector2 pos = _player.Position + Vector2.FromAngle(spawnAngle) * spawnDist;
+            float a = RandF() * MathF.Tau;
+            _enemies.Add(new EnemyShip
+            {
+                Position = pos,
+                Velocity = Vector2.FromAngle(a) * (80f + RandF() * 70f),
+                Angle = a,
+                Health = 3f,
+                MaxHealth = 3f,
+                Type = "scout",
+                ShootCooldown = RandF() * 2f,
+                AiState = AiState.Attack,
+                StateTimer = 0f,
                 OrbitAngle = spawnAngle
             });
         }
@@ -2533,6 +3184,35 @@ public class SystemScene
         sb.Draw(pixel, new Microsoft.Xna.Framework.Vector2(x1, y1), null, color, angle,
             Microsoft.Xna.Framework.Vector2.Zero, new Microsoft.Xna.Framework.Vector2(len / pixel.Width, 1f),
             SpriteEffects.None, 0);
+    }
+
+    private static void FillTriangle(SpriteBatch sb, Texture2D pixel, float x0, float y0, float x1, float y1, float x2, float y2, Color color)
+    {
+        // Rasterize filled triangle by scanning horizontal spans
+        float minY = MathF.Min(y0, MathF.Min(y1, y2));
+        float maxY = MathF.Max(y0, MathF.Max(y1, y2));
+        int iMinY = (int)minY;
+        int iMaxY = (int)maxY;
+        for (int y = iMinY; y <= iMaxY; y++)
+        {
+            float fy = y + 0.5f;
+            float xLeft = float.MaxValue, xRight = float.MinValue;
+            void edge(float vx0, float vy0, float vx1, float vy1)
+            {
+                if ((vy0 < fy && vy1 >= fy) || (vy1 < fy && vy0 >= fy))
+                {
+                    float t = (fy - vy0) / (vy1 - vy0);
+                    float ex = vx0 + t * (vx1 - vx0);
+                    if (ex < xLeft) xLeft = ex;
+                    if (ex > xRight) xRight = ex;
+                }
+            }
+            edge(x0, y0, x1, y1);
+            edge(x1, y1, x2, y2);
+            edge(x2, y2, x0, y0);
+            if (xLeft < xRight)
+                sb.Draw(pixel, new Microsoft.Xna.Framework.Rectangle((int)xLeft, y, (int)(xRight - xLeft + 1), 1), color);
+        }
     }
 
     private static void DrawRect(SpriteBatch sb, Texture2D pixel, float x, float y, float w, float h, Color color)
