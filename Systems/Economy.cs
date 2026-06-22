@@ -7,6 +7,13 @@ public class Economy
     private Galaxy _galaxy;
     private Dictionary<string, SystemMarketState> _markets = new();
 
+    public Dictionary<string, SystemMarketState> Markets => _markets;
+
+    public void SetMarkets(Dictionary<string, SystemMarketState> markets)
+    {
+        _markets = markets;
+    }
+
     public Economy(Galaxy galaxy)
     {
         _galaxy = galaxy;

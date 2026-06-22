@@ -4,6 +4,7 @@ using Microsoft.Xna.Framework.Input;
 using SpaceGame.Models;
 using SpaceGame.Services;
 using SpaceGame.Systems;
+using System.Text.Json;
 using Color = Microsoft.Xna.Framework.Color;
 using Vector2 = SpaceGame.Systems.Vector2;
 
@@ -215,6 +216,226 @@ public class Game1 : Game
         _viewMode = ViewMode.Galaxy;
         _currentMenu = MenuType.Pause;
         _menuSelection = 0;
+    }
+
+    private static string SavePath =>
+        Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "save.json");
+
+    public void SaveGame()
+    {
+        if (_systemScene != null && _systemScene.TrainingMode)
+        {
+            SetStatus("Cannot save during training mode.");
+            _statusTimer = 2f;
+            return;
+        }
+
+        var data = new SaveGameData
+        {
+            PlayerPosition = _player.Position,
+            PlayerVelocity = _player.Velocity,
+            PlayerAngle = _player.Angle,
+            Credits = _player.Credits,
+            Health = _player.Health,
+            MaxHealth = _player.MaxHealth,
+            Fuel = _player.Fuel,
+            MaxFuel = _player.MaxFuel,
+            CargoCapacity = _player.CargoCapacity,
+            OwnedUpgrades = new List<string>(_player.OwnedUpgrades),
+            CompletedQuests = new List<string>(_player.CompletedQuests),
+            CurrentSystemId = _player.CurrentSystemId,
+            Resources = _player.Resources.Select(r => new InventoryEntry { Id = r.Id, Quantity = r.Quantity }).ToList(),
+            QuestItems = _player.QuestItems.Select(r => new InventoryEntry { Id = r.Id, Quantity = r.Quantity }).ToList(),
+            Consumables = _player.Consumables.Select(r => new InventoryEntry { Id = r.Id, Quantity = r.Quantity }).ToList(),
+            UnequippedEquipment = _player.UnequippedEquipment.Select(r => new InventoryEntry { Id = r.Id, Quantity = r.Quantity }).ToList(),
+            Equipment = new Dictionary<string, string>(_player.Equipment),
+            BaseMaxSpeed = _player.BaseMaxSpeed,
+            BaseThrust = _player.BaseThrust,
+            BaseRotationSpeed = _player.BaseRotationSpeed,
+            Systems = _galaxy.Systems.Select(sys => new SystemSaveData
+            {
+                Id = sys.Id,
+                Hostility = sys.Hostility,
+                Faction = sys.Faction,
+                DefenseLevel = sys.Station?.DefenseLevel ?? 0,
+                StationAngle = sys.Station?.Angle ?? 0f
+            }).ToList(),
+            ActiveQuests = _galaxy.ActiveQuests.Select(q => CloneQuest(q)).ToList(),
+            AvailableQuests = _galaxy.AvailableQuests.Select(q => CloneQuest(q)).ToList(),
+            AllQuests = _galaxy.AllQuests.Select(q => CloneQuest(q)).ToList(),
+            CurrentSystemIdRef = _galaxy.CurrentSystem?.Id,
+            TargetSystemId = _galaxy.TargetSystem?.Id,
+            BlockedRoutes = _routeManager.BlockedRoutes.ToList(),
+            AiDifficulty = (int)_routeManager.Difficulty,
+            Markets = _galaxy.Economy.Markets.ToDictionary(kv => kv.Key, kv => new SystemMarketState
+            {
+                Stocks = new Dictionary<string, float>(kv.Value.Stocks),
+                Demands = new Dictionary<string, float>(kv.Value.Demands),
+                ProductionRates = new Dictionary<string, float>(kv.Value.ProductionRates)
+            }),
+            NewsArticles = _galaxy.NewsService.Articles.ToList(),
+            ActiveAttacks = _activeAttacks.ToDictionary(kv => kv.Key, kv => new AttackStateSave
+            {
+                Timer = kv.Value.Timer,
+                Attacker = kv.Value.Attacker
+            }),
+            GalaxyPlayerPos = _galaxyPlayerPos,
+            GalaxyPlayerVel = _galaxyPlayerVel,
+            AiTickTimer = _aiTickTimer,
+            AiCaptureTimer = _aiCaptureTimer,
+            FederationAiTimer = _federationAiTimer,
+            AiDefenseTimer = _aiDefenseTimer,
+            IsInSystemView = _viewMode == ViewMode.System
+        };
+
+        string json = JsonSerializer.Serialize(data, new JsonSerializerOptions { WriteIndented = true });
+        File.WriteAllText(SavePath, json);
+        SetStatus("Game saved.");
+        _statusTimer = 2f;
+    }
+
+    public bool LoadGame()
+    {
+        if (!File.Exists(SavePath))
+        {
+            SetStatus("No save file found.");
+            _statusTimer = 2f;
+            return false;
+        }
+
+        try
+        {
+            string json = File.ReadAllText(SavePath);
+            var data = JsonSerializer.Deserialize<SaveGameData>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            if (data == null)
+            {
+                SetStatus("Save file corrupt.");
+                _statusTimer = 2f;
+                return false;
+            }
+
+            // Restore player
+            _player.Position = data.PlayerPosition;
+            _player.Velocity = data.PlayerVelocity;
+            _player.Angle = data.PlayerAngle;
+            _player.Credits = data.Credits;
+            _player.Health = data.Health;
+            _player.MaxHealth = data.MaxHealth;
+            _player.Fuel = data.Fuel;
+            _player.MaxFuel = data.MaxFuel;
+            _player.CargoCapacity = data.CargoCapacity;
+            _player.OwnedUpgrades = new List<string>(data.OwnedUpgrades);
+            _player.CompletedQuests = new List<string>(data.CompletedQuests);
+            _player.CurrentSystemId = data.CurrentSystemId;
+            _player.Resources = data.Resources.Select(r => new InventoryEntry { Id = r.Id, Quantity = r.Quantity }).ToList();
+            _player.QuestItems = data.QuestItems.Select(r => new InventoryEntry { Id = r.Id, Quantity = r.Quantity }).ToList();
+            _player.Consumables = data.Consumables.Select(r => new InventoryEntry { Id = r.Id, Quantity = r.Quantity }).ToList();
+            _player.UnequippedEquipment = data.UnequippedEquipment.Select(r => new InventoryEntry { Id = r.Id, Quantity = r.Quantity }).ToList();
+            _player.Equipment = new Dictionary<string, string>(data.Equipment);
+            _player.BaseMaxSpeed = data.BaseMaxSpeed;
+            _player.BaseThrust = data.BaseThrust;
+            _player.BaseRotationSpeed = data.BaseRotationSpeed;
+
+            // Restore galaxy systems (mutable fields)
+            foreach (var sd in data.Systems)
+            {
+                var sys = _galaxy.FindSystemById(sd.Id);
+                if (sys == null) continue;
+                sys.Hostility = sd.Hostility;
+                sys.Faction = sd.Faction;
+                if (sys.Station != null)
+                {
+                    sys.Station.DefenseLevel = sd.DefenseLevel;
+                    sys.Station.Angle = sd.StationAngle;
+                }
+            }
+
+            // Restore quests
+            _galaxy.ActiveQuests.Clear();
+            _galaxy.ActiveQuests.AddRange(data.ActiveQuests);
+            _galaxy.AvailableQuests.Clear();
+            _galaxy.AvailableQuests.AddRange(data.AvailableQuests);
+            _galaxy.AllQuests.Clear();
+            _galaxy.AllQuests.AddRange(data.AllQuests);
+
+            // Restore navigation references
+            _galaxy.CurrentSystem = !string.IsNullOrEmpty(data.CurrentSystemIdRef) ? _galaxy.FindSystemById(data.CurrentSystemIdRef) : null;
+            _galaxy.TargetSystem = !string.IsNullOrEmpty(data.TargetSystemId) ? _galaxy.FindSystemById(data.TargetSystemId) : null;
+
+            // Restore route manager
+            _routeManager.SetBlockedRoutes(data.BlockedRoutes);
+            _routeManager.Difficulty = (AiDifficulty)data.AiDifficulty;
+
+            // Restore economy
+            _galaxy.Economy.SetMarkets(data.Markets.ToDictionary(kv => kv.Key, kv => new SystemMarketState
+            {
+                Stocks = new Dictionary<string, float>(kv.Value.Stocks),
+                Demands = new Dictionary<string, float>(kv.Value.Demands),
+                ProductionRates = new Dictionary<string, float>(kv.Value.ProductionRates)
+            }));
+
+            // Restore news
+            _galaxy.NewsService.SetArticles(data.NewsArticles);
+
+            // Restore attacks and timers
+            _activeAttacks.Clear();
+            foreach (var kv in data.ActiveAttacks)
+                _activeAttacks[kv.Key] = new AttackState { Timer = kv.Value.Timer, Attacker = kv.Value.Attacker };
+
+            _galaxyPlayerPos = data.GalaxyPlayerPos;
+            _galaxyPlayerVel = data.GalaxyPlayerVel;
+            _aiTickTimer = data.AiTickTimer;
+            _aiCaptureTimer = data.AiCaptureTimer;
+            _federationAiTimer = data.FederationAiTimer;
+            _aiDefenseTimer = data.AiDefenseTimer;
+
+            // Return to galaxy view
+            _viewMode = ViewMode.Galaxy;
+            _currentMenu = MenuType.None;
+
+            // Recreate system view if player was in one
+            if (data.IsInSystemView && _player.CurrentSystemId != null)
+            {
+                var sys = _galaxy.FindSystemById(_player.CurrentSystemId);
+                if (sys != null)
+                {
+                    _galaxy.CurrentSystem = sys;
+                    _systemScene = new SystemScene(_player);
+                    _systemScene.EnterSystem(sys, this);
+                    _viewMode = ViewMode.System;
+                }
+            }
+
+            SetStatus("Game loaded.");
+            _statusTimer = 2f;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            SetStatus($"Load failed: {ex.Message}");
+            _statusTimer = 3f;
+            return false;
+        }
+    }
+
+    private static QuestData CloneQuest(QuestData q)
+    {
+        return new QuestData
+        {
+            Id = q.Id,
+            Name = q.Name,
+            Description = q.Description,
+            ObjectiveType = q.ObjectiveType,
+            TargetSystem = q.TargetSystem,
+            TargetItem = q.TargetItem,
+            TargetCount = q.TargetCount,
+            RewardCredits = q.RewardCredits,
+            RewardUpgrade = q.RewardUpgrade,
+            RewardEquipment = q.RewardEquipment,
+            GiverSystem = q.GiverSystem,
+            RewardDefenseSystem = q.RewardDefenseSystem,
+            RequiredResources = new Dictionary<string, int>(q.RequiredResources)
+        };
     }
 
     private void NewGame()
@@ -869,7 +1090,16 @@ public class Game1 : Game
 
             _starfield.Update(dt, _player.Velocity);
         }
-        else if (_viewMode == ViewMode.System)
+
+        // Global save/load shortcuts
+        bool f5Hit = keyboard.IsKeyDown(Keys.F5) && _prevKeyboard.IsKeyUp(Keys.F5);
+        bool f9Hit = keyboard.IsKeyDown(Keys.F9) && _prevKeyboard.IsKeyUp(Keys.F9);
+        if (f5Hit && _currentMenu == MenuType.None)
+            SaveGame();
+        if (f9Hit && _currentMenu == MenuType.None && File.Exists(SavePath))
+            LoadGame();
+
+        if (_viewMode == ViewMode.System)
         {
             if (_currentMenu == MenuType.Pause)
             {
@@ -883,6 +1113,10 @@ public class Game1 : Game
                 {
                     if (_menuSelection == 0) // New Game
                         NewGame();
+                    else if (_menuSelection == 1) // Save Game
+                        SaveGame();
+                    else if (_menuSelection == 2) // Load Game
+                        LoadGame();
                     else if (_menuSelection == 3) // Training Mode
                         EnterTraining();
                     else if (_menuSelection == 4) // Controls
@@ -993,6 +1227,10 @@ public class Game1 : Game
             {
                 if (_menuSelection == 0) // New Game
                     NewGame();
+                else if (_menuSelection == 1) // Save Game
+                    SaveGame();
+                else if (_menuSelection == 2) // Load Game
+                    LoadGame();
                 else if (_menuSelection == 3) // Training Mode
                     EnterTraining();
                 else if (_menuSelection == 4) // Controls

@@ -73,6 +73,8 @@ public class SystemScene
     private float _dockedNewsScrollRepeat;
     private bool _dockedNewsScrollHeld;
     private bool _dockedNewsScrollDown;
+    private float _dockedSellRepeat;
+    private float _dockedBuyRepeat;
     private bool _nearEdge;
     private bool _nearPlanet;
     private bool _underAttack;
@@ -1540,13 +1542,31 @@ public class SystemScene
                 var economy = _game.Galaxy.Economy;
                 var resources = _game.Galaxy.AllResources
                     .Where(r => economy.HasResource(_system.Id, r.Id))
+                    .OrderBy(r => r.Category)
+                    .ThenBy(r => r.Name)
                     .ToList();
                 int marketItemCount = resources.Count + 2; // +1 energy canister, +1 fuel cell
                 if (downDocked)
                     _dockedMarketSelection = (_dockedMarketSelection + 1) % Math.Max(1, marketItemCount);
                 if (upDocked)
                     _dockedMarketSelection = (_dockedMarketSelection - 1 + Math.Max(1, marketItemCount)) % Math.Max(1, marketItemCount);
-                if (enterDocked && marketItemCount > 0)
+
+                // Sell: edge trigger or held with cooldown
+                bool sellPressed = backDocked || (keyboard.IsKeyDown(Keys.Back) && _dockedSellRepeat <= 0f);
+                if (sellPressed && resources.Count > 0 && _dockedMarketSelection < resources.Count)
+                {
+                    var res = resources[_dockedMarketSelection];
+                    economy.Sell(_player, _system.Id, res.Id, 1);
+                    _dockedSellRepeat = 0.12f;
+                }
+                if (keyboard.IsKeyDown(Keys.Back))
+                    _dockedSellRepeat -= dt;
+                else
+                    _dockedSellRepeat = 0f;
+
+                // Buy: edge trigger or held with cooldown
+                bool buyPressed = enterDocked || (keyboard.IsKeyDown(Keys.Enter) && _dockedBuyRepeat <= 0f);
+                if (buyPressed && marketItemCount > 0)
                 {
                     if (_dockedMarketSelection < resources.Count)
                     {
@@ -1584,12 +1604,12 @@ public class SystemScene
                             }
                         }
                     }
+                    _dockedBuyRepeat = 0.12f;
                 }
-                if (backDocked && resources.Count > 0 && _dockedMarketSelection < resources.Count)
-                {
-                    var res = resources[_dockedMarketSelection];
-                    economy.Sell(_player, _system.Id, res.Id, 1);
-                }
+                if (keyboard.IsKeyDown(Keys.Enter))
+                    _dockedBuyRepeat -= dt;
+                else
+                    _dockedBuyRepeat = 0f;
             }
             else if (_dockedTab == 1)
             {

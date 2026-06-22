@@ -12,6 +12,12 @@ public class NewsService
 
     public IReadOnlyList<NewsArticle> Articles => _articles;
 
+    public void SetArticles(List<NewsArticle> articles)
+    {
+        _articles.Clear();
+        _articles.AddRange(articles);
+    }
+
     public void SetGalaxy(Galaxy galaxy)
     {
         _galaxy = galaxy;

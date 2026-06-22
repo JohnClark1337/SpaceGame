@@ -38,6 +38,11 @@ public class RouteManager
 
     public IReadOnlySet<string> BlockedRoutes => _blockedRoutes;
 
+    public void SetBlockedRoutes(IEnumerable<string> routes)
+    {
+        _blockedRoutes = new HashSet<string>(routes);
+    }
+
     public int MaxBlocked
     {
         get
