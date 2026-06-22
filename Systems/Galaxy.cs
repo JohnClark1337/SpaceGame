@@ -14,6 +14,7 @@ public class Galaxy
     public List<QuestData> ActiveQuests { get; private set; } = new();
     public List<QuestData> AvailableQuests { get; private set; } = new();
     public Economy Economy { get; private set; } = null!;
+    public NewsService NewsService { get; private set; } = null!;
 
     public StarSystemData? CurrentSystem { get; set; }
     public StarSystemData? TargetSystem { get; set; }
@@ -84,6 +85,9 @@ public class Galaxy
         AvailableQuests = new List<QuestData>(AllQuests);
         Economy = new Economy(this);
         Economy.Initialize();
+        NewsService = new NewsService();
+        NewsService.SetGalaxy(this);
+        NewsService.GenerateDefaultArticles();
     }
 
     public StarSystemData? FindSystemById(string id) =>

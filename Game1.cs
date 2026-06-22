@@ -24,6 +24,7 @@ public class Game1 : Game
     private readonly Starfield _starfield = new();
     private float _aiTickTimer;
     private float _aiCaptureTimer;
+    private float _federationAiTimer;
     private LlmService? _llmService;
     private bool _useLlm;
     private bool _llmChecked;
@@ -154,6 +155,7 @@ public class Game1 : Game
         _routeManager.SetGalaxy(_galaxy);
         _aiTickTimer = 8f;
         _aiCaptureTimer = 30f;
+        _federationAiTimer = 30f;
         _galaxy.ActiveQuests.Clear();
         _galaxy.TargetSystem = null;
 
@@ -200,6 +202,8 @@ public class Game1 : Game
     {
         _galaxy.LoadData();
         _routeManager = new RouteManager(_galaxy);
+        _routeManager.RouteBlocked += OnRouteBlocked;
+        _routeManager.RouteUnblocked += OnRouteUnblocked;
         _llmService = new LlmService();
 
         if (_galaxy.Systems.Count == 0)
@@ -244,6 +248,7 @@ public class Game1 : Game
         if (dt > 0.05f) dt = 0.05f;
 
         _galaxy.Economy?.Tick(dt);
+        _galaxy.NewsService?.Tick(dt, (float)_gameTime.TotalGameTime.TotalSeconds);
 
         var keyboard = Keyboard.GetState();
         var mouse = Mouse.GetState();
@@ -717,6 +722,14 @@ public class Game1 : Game
                     {
                         _aiCaptureTimer = 30f;
                         AiCaptureTick();
+                    }
+
+                    // Rule-based Federation counter-attack
+                    _federationAiTimer -= dt;
+                    if (_federationAiTimer <= 0f)
+                    {
+                        _federationAiTimer = 30f;
+                        FederationAiTick();
                     }
                 }
             }
@@ -2597,7 +2610,7 @@ public class Game1 : Game
         }
     }
 
-    private List<string> WordWrap(SpriteFont font, string text, float maxWidth)
+    internal List<string> WordWrap(SpriteFont font, string text, float maxWidth)
     {
         var lines = new List<string>();
         if (string.IsNullOrEmpty(text)) return lines;
@@ -2639,13 +2652,30 @@ public class Game1 : Game
 
     public bool IsSystemUnderAttack(string systemId) => _activeAttacks.ContainsKey(systemId);
 
-    public void StartAttack(string systemId)
+    public void EmpireStartAttack(string systemId)
     {
         var sys = _galaxy.FindSystemById(systemId);
         if (sys == null || sys.Hostility >= 3 || _activeAttacks.ContainsKey(systemId)) return;
-        _activeAttacks[systemId] = new AttackState { Timer = AttackDuration };
+        _activeAttacks[systemId] = new AttackState { Timer = AttackDuration, Attacker = "Trigor Empire" };
         _statusMessage = $"Trigor Empire is attacking {sys.Name}!";
         _statusTimer = 5f;
+        _galaxy.NewsService?.PostBreakingNews(
+            $"Trigor Empire Launches Assault on {sys.Name}",
+            $"Imperial forces have initiated a military strike against {sys.Name}. Civilians are urged to evacuate. The Terran Federation has condemned the attack.",
+            "Imperial Herald", "Trigor Empire");
+    }
+
+    public void FederationStartAttack(string systemId)
+    {
+        var sys = _galaxy.FindSystemById(systemId);
+        if (sys == null || sys.Hostility < 3 || _activeAttacks.ContainsKey(systemId)) return;
+        _activeAttacks[systemId] = new AttackState { Timer = AttackDuration, Attacker = "Terran Federation" };
+        _statusMessage = $"Terran Federation is attacking {sys.Name}!";
+        _statusTimer = 5f;
+        _galaxy.NewsService?.PostBreakingNews(
+            $"Federation Strikes Back at {sys.Name}",
+            $"Terran Federation naval forces have launched a counter-offensive against {sys.Name}. 'Freedom will prevail,' stated Fleet Command.",
+            "Federation News Network", "Terran Federation");
     }
 
     public void RepelAttack(string systemId)
@@ -2674,7 +2704,7 @@ public class Game1 : Game
         _useLlm = await _llmService.DetectAsync();
         if (_useLlm)
         {
-            _statusMessage = "LLM commander online";
+            _statusMessage = "LLM commanders online (Empire + Federation)";
             _statusTimer = 4f;
         }
     }
@@ -2694,9 +2724,29 @@ public class Game1 : Game
         {
             _routeManager.AiTick(_player.CurrentSystemId);
             AiCaptureTick();
+            FederationAiTick();
             return;
         }
 
+        // Empire news
+        if (!string.IsNullOrEmpty(decision.EmpireNewsHeadline) && !string.IsNullOrEmpty(decision.EmpireNewsBody))
+        {
+            _galaxy.NewsService?.PostFactionNews(
+                decision.EmpireNewsHeadline,
+                decision.EmpireNewsBody,
+                "Imperial Herald", "Trigor Empire");
+        }
+
+        // Federation news
+        if (!string.IsNullOrEmpty(decision.FederationNewsHeadline) && !string.IsNullOrEmpty(decision.FederationNewsBody))
+        {
+            _galaxy.NewsService?.PostFactionNews(
+                decision.FederationNewsHeadline,
+                decision.FederationNewsBody,
+                "Federation News Network", "Terran Federation");
+        }
+
+        // Empire actions
         if (decision.BlockRoutes != null)
         {
             foreach (var route in decision.BlockRoutes)
@@ -2722,7 +2772,37 @@ public class Game1 : Game
                     }
                 }
                 if (adjacent)
-                    StartAttack(target.Id);
+                    EmpireStartAttack(target.Id);
+            }
+        }
+
+        // Federation actions
+        if (decision.FederationUnblockRoutes != null)
+        {
+            foreach (var route in decision.FederationUnblockRoutes)
+            {
+                if (route.Count >= 2)
+                    _routeManager.UnblockRoute(route[0], route[1]);
+            }
+        }
+
+        if (!string.IsNullOrEmpty(decision.FederationAttackSystem))
+        {
+            var target = _galaxy.FindSystemById(decision.FederationAttackSystem);
+            if (target != null && target.Station != null && target.Hostility >= 3)
+            {
+                bool adjacent = false;
+                foreach (var conn in target.Connections)
+                {
+                    var neighbor = _galaxy.FindSystemById(conn);
+                    if (neighbor != null && neighbor.Hostility < 3)
+                    {
+                        adjacent = true;
+                        break;
+                    }
+                }
+                if (adjacent)
+                    FederationStartAttack(target.Id);
             }
         }
     }
@@ -2732,17 +2812,37 @@ public class Game1 : Game
         var sys = _galaxy.FindSystemById(systemId);
         if (sys == null) return;
 
-        sys.Hostility = 5;
-        sys.Faction = "Trigor Empire";
+        if (!_activeAttacks.TryGetValue(systemId, out var state)) return;
+        string attacker = state.Attacker;
 
-        if (sys.Connections.Count > 0)
+        if (attacker == "Terran Federation")
         {
-            var blockedConn = sys.Connections[Random.Shared.Next(sys.Connections.Count)];
-            _routeManager.BlockRoute(sys.Id, blockedConn);
+            sys.Hostility = 0;
+            sys.Faction = "Terran Federation";
+            _statusMessage = $"Terran Federation has captured {sys.Name}!";
+            _galaxy.NewsService?.PostBreakingNews(
+                $"Federation Liberates {sys.Name}",
+                $"The Terran Federation has successfully captured {sys.Name}, dealing a blow to Trigor Empire aggression in the sector.",
+                "Federation News Network", "Terran Federation");
+        }
+        else
+        {
+            sys.Hostility = 5;
+            sys.Faction = "Trigor Empire";
+            _statusMessage = $"Trigor Empire has captured {sys.Name}!";
+            _galaxy.NewsService?.PostBreakingNews(
+                $"Trigor Empire Claims {sys.Name}",
+                $"Imperial forces have seized control of {sys.Name}. The Empire declares it a 'liberated territory' under Imperial protection.",
+                "Imperial Herald", "Trigor Empire");
+
+            if (sys.Connections.Count > 0)
+            {
+                var blockedConn = sys.Connections[Random.Shared.Next(sys.Connections.Count)];
+                _routeManager.BlockRoute(sys.Id, blockedConn);
+            }
         }
 
         _activeAttacks.Remove(systemId);
-        _statusMessage = $"Trigor Empire has captured {sys.Name}!";
         _statusTimer = 5f;
     }
 
@@ -2769,7 +2869,49 @@ public class Game1 : Game
         if (!adjacentToEmpire) return;
 
         // Start attack (60s timer) instead of instant capture
-        StartAttack(target.Id);
+        EmpireStartAttack(target.Id);
+    }
+
+    private void FederationAiTick()
+    {
+        // Federation counter-attacks Empire systems adjacent to non-Empire systems
+        var targets = _galaxy.Systems
+            .Where(s => s.Hostility >= 3 && s.Station != null && s.Id != _player.CurrentSystemId)
+            .ToList();
+        if (targets.Count == 0) return;
+
+        var target = targets[Random.Shared.Next(targets.Count)];
+
+        // Federation can attack Empire systems adjacent to Federation OR Independent systems
+        bool adjacentToFriendly = false;
+        foreach (var conn in target.Connections)
+        {
+            var neighbor = _galaxy.FindSystemById(conn);
+            if (neighbor != null && neighbor.Hostility < 3)
+            {
+                adjacentToFriendly = true;
+                break;
+            }
+        }
+        if (!adjacentToFriendly) return;
+
+        // Try to unblock a blocked route near friendly space
+        foreach (var route in _routeManager.BlockedRoutes.ToList())
+        {
+            var parts = route.Split('-');
+            if (parts.Length == 2)
+            {
+                var a = _galaxy.FindSystemById(parts[0]);
+                var b = _galaxy.FindSystemById(parts[1]);
+                if ((a != null && a.Hostility < 3) || (b != null && b.Hostility < 3))
+                {
+                    _routeManager.UnblockRoute(parts[0], parts[1]);
+                    break;
+                }
+            }
+        }
+
+        FederationStartAttack(target.Id);
     }
 
     private void DrawStatusMessage()
@@ -2849,6 +2991,30 @@ public class Game1 : Game
         return Color.White;
     }
 
+    private void OnRouteBlocked(string a, string b)
+    {
+        var sysA = _galaxy.FindSystemById(a);
+        var sysB = _galaxy.FindSystemById(b);
+        string nameA = sysA?.Name ?? a;
+        string nameB = sysB?.Name ?? b;
+        _galaxy.NewsService?.PostBreakingNews(
+            $"Trade Route Blocked: {nameA} - {nameB}",
+            $"Imperial blockade has been established between {nameA} and {nameB}. Travel is advised against.",
+            "Imperial Herald", "Trigor Empire");
+    }
+
+    private void OnRouteUnblocked(string a, string b)
+    {
+        var sysA = _galaxy.FindSystemById(a);
+        var sysB = _galaxy.FindSystemById(b);
+        string nameA = sysA?.Name ?? a;
+        string nameB = sysB?.Name ?? b;
+        _galaxy.NewsService?.PostBreakingNews(
+            $"Route Reopened: {nameA} - {nameB}",
+            $"Federation forces have successfully cleared the blockade between {nameA} and {nameB}. Normal travel resumes.",
+            "Federation News Network", "Terran Federation");
+    }
+
     private static string GetDirection(Vector2 from, Vector2 to)
     {
         float dx = to.X - from.X;
@@ -2910,4 +3076,5 @@ public class Starfield
 public class AttackState
 {
     public float Timer { get; set; }
+    public string Attacker { get; set; } = "Trigor Empire";
 }

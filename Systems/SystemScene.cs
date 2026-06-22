@@ -37,6 +37,10 @@ public class SystemScene
     private int _dockedQuestSelection;
     private int _dockedMarketSelection;
     private int _dockedUpgradeSelection;
+    private int _dockedNewsScroll;
+    private float _dockedNewsScrollRepeat;
+    private bool _dockedNewsScrollHeld;
+    private bool _dockedNewsScrollDown;
     private bool _nearEdge;
     private bool _nearPlanet;
     private bool _underAttack;
@@ -1210,16 +1214,20 @@ public class SystemScene
 
             if (leftDocked)
             {
-                _dockedTab = (_dockedTab - 1 + 3) % 3;
+                _dockedTab = (_dockedTab - 1 + 4) % 4;
                 _dockedQuestSelection = 0;
                 _dockedMarketSelection = 0;
+                _dockedNewsScroll = 0;
             }
             if (rightDocked)
             {
-                _dockedTab = (_dockedTab + 1) % 3;
+                _dockedTab = (_dockedTab + 1) % 4;
                 _dockedQuestSelection = 0;
                 _dockedMarketSelection = 0;
+                _dockedNewsScroll = 0;
             }
+
+            bool backDocked = keyboard.IsKeyDown(Keys.Back) && _prevKeyboard.IsKeyUp(Keys.Back);
 
             if (_dockedTab == 0)
             {
@@ -1229,7 +1237,6 @@ public class SystemScene
                     .Where(r => economy.HasResource(_system.Id, r.Id))
                     .ToList();
                 int marketItemCount = resources.Count + 2; // +1 energy canister, +1 fuel cell
-                bool backDocked = keyboard.IsKeyDown(Keys.Back) && _prevKeyboard.IsKeyUp(Keys.Back);
                 if (downDocked)
                     _dockedMarketSelection = (_dockedMarketSelection + 1) % Math.Max(1, marketItemCount);
                 if (upDocked)
@@ -1319,7 +1326,7 @@ public class SystemScene
                     }
                 }
             }
-            else
+            else if (_dockedTab == 2)
             {
                 // Quests tab
                 var available = _game.GetQuestsForSystem(_system.Id);
@@ -1359,6 +1366,46 @@ public class SystemScene
                         }
                     }
                 }
+            }
+            else
+            {
+                // News tab: scroll using up/down with key repeat
+                bool downHeld = keyboard.IsKeyDown(Keys.Down) || keyboard.IsKeyDown(Keys.S);
+                bool upHeld = keyboard.IsKeyDown(Keys.Up) || keyboard.IsKeyDown(Keys.W);
+                bool downPressed = downHeld && _prevKeyboard.IsKeyUp(Keys.Down) && _prevKeyboard.IsKeyUp(Keys.S);
+                bool upPressed = upHeld && _prevKeyboard.IsKeyUp(Keys.Up) && _prevKeyboard.IsKeyUp(Keys.W);
+
+                if (downPressed)
+                {
+                    _dockedNewsScroll++;
+                    _dockedNewsScrollRepeat = 0.1f;
+                    _dockedNewsScrollHeld = true;
+                    _dockedNewsScrollDown = true;
+                }
+                else if (upPressed)
+                {
+                    _dockedNewsScroll--;
+                    _dockedNewsScrollRepeat = 0.1f;
+                    _dockedNewsScrollHeld = true;
+                    _dockedNewsScrollDown = false;
+                }
+                else if (_dockedNewsScrollHeld)
+                {
+                    bool stillDown = _dockedNewsScrollDown ? downHeld : upHeld;
+                    _dockedNewsScrollRepeat -= (float)_game.GameTime.ElapsedGameTime.TotalSeconds;
+                    if (stillDown && _dockedNewsScrollRepeat <= 0)
+                    {
+                        if (_dockedNewsScrollDown) _dockedNewsScroll++;
+                        else _dockedNewsScroll--;
+                        _dockedNewsScrollRepeat = 0.015f;
+                    }
+                    else if (!stillDown)
+                    {
+                        _dockedNewsScrollHeld = false;
+                    }
+                }
+
+                if (_dockedNewsScroll < 0) _dockedNewsScroll = 0;
             }
         }
 
@@ -2244,17 +2291,19 @@ public class SystemScene
         textY += 35;
 
         // Tab bar
-        string[] tabs = { "  Market  ", "  Upgrades  ", "  Quests  " };
+        string[] tabs = { "Market", "Upgrades", "Quests", "News" };
         int tabX = textX;
+        int tabPadding = 12;
         for (int i = 0; i < tabs.Length; i++)
         {
             Color tc = i == _dockedTab ? Color.White : Color.Gray * 0.5f;
             Color bg = i == _dockedTab ? new Color(40, 40, 70) : Color.Transparent;
             var sz = font.MeasureString(tabs[i]);
-            sb.Draw(pixel, new Microsoft.Xna.Framework.Rectangle(tabX, textY, (int)sz.X + 8, (int)sz.Y + 4), bg);
+            int tabW = (int)sz.X + tabPadding * 2;
+            sb.Draw(pixel, new Microsoft.Xna.Framework.Rectangle(tabX, textY, tabW, (int)sz.Y + 6), bg);
             DrawSpacedText(sb, font, tabs[i],
-                new Microsoft.Xna.Framework.Vector2(tabX + 4, textY + 2), tc);
-            tabX += (int)sz.X + 12;
+                new Microsoft.Xna.Framework.Vector2(tabX + (tabW - (int)sz.X) / 2f, textY + 3), tc);
+            tabX += tabW + 6;
         }
         textY += 40;
 
@@ -2263,8 +2312,10 @@ public class SystemScene
             DrawMarketTab(sb, pixel, font, titleFont, textX, textY, panelW, screenW, screenH, px, py);
         else if (_dockedTab == 1)
             DrawUpgradesTab(sb, pixel, font, titleFont, textX, textY, panelW, screenW, screenH, px, py);
-        else
+        else if (_dockedTab == 2)
             DrawQuestsTab(sb, pixel, font, titleFont, textX, textY, panelW, screenW, screenH, px, py);
+        else
+            DrawNewsTab(sb, pixel, font, titleFont, textX, textY, panelW, panelH, screenW, screenH, px, py);
 
         string foot = "[Left/Right] Tab  [Up/Dn] Select  [Enter] Buy  [BkSp] Sell  [ESC] Undock";
         DrawSpacedText(sb, font, foot,
@@ -2595,6 +2646,151 @@ public class SystemScene
                     new Microsoft.Xna.Framework.Vector2(textX, textY), Color.Gray * 0.5f);
                 textY += 22;
             }
+        }
+    }
+
+    private void DrawNewsTab(SpriteBatch sb, Texture2D pixel, SpriteFont font, SpriteFont titleFont,
+        int textX, int textY, int panelW, int panelH, int screenW, int screenH, int px, int py)
+    {
+        var articles = _game.Galaxy.NewsService.Articles;
+        int maxBodyW = panelW - 70;
+
+        DrawSpacedText(sb, titleFont, "--- Galaxy News ---",
+            new Microsoft.Xna.Framework.Vector2(textX, textY), Color.Lime);
+        textY += 36;
+
+        if (articles.Count == 0)
+        {
+            DrawSpacedText(sb, font, "  No news available.",
+                new Microsoft.Xna.Framework.Vector2(textX, textY), Color.Gray);
+            return;
+        }
+
+        // Content area bounds
+        int contentTop = textY;
+        int contentBottom = py + panelH - 50;
+        int contentH = contentBottom - contentTop;
+        int contentRight = px + panelW - 20;
+
+        // Pre-layout: measure every article's total height
+        var heights = new int[articles.Count];
+        int totalH = 0;
+        int lineH = 14;
+        for (int i = 0; i < articles.Count; i++)
+        {
+            int h = 0;
+            if (articles[i].IsBreaking) h += 16;
+            h += 18;
+            var bodyLines = _game.WordWrap(font, articles[i].Body, maxBodyW - 16);
+            h += bodyLines.Count * lineH;
+            h += 2 + lineH; // source line
+            heights[i] = h;
+            totalH += h;
+        }
+
+        // Clamp scroll offset (pixel-based)
+        int maxScroll = Math.Max(0, totalH - contentH);
+        if (_dockedNewsScroll > maxScroll) _dockedNewsScroll = maxScroll;
+        if (_dockedNewsScroll < 0) _dockedNewsScroll = 0;
+
+        // Find first visible article
+        int drawY = contentTop;
+        int firstIdx = 0;
+        int accumulated = 0;
+        for (int i = 0; i < articles.Count; i++)
+        {
+            if (accumulated + heights[i] > _dockedNewsScroll)
+            {
+                firstIdx = i;
+                drawY = contentTop - (_dockedNewsScroll - accumulated);
+                break;
+            }
+            accumulated += heights[i];
+        }
+
+        // Draw visible articles
+        for (int i = firstIdx; i < articles.Count; i++)
+        {
+            if (drawY > contentBottom) break;
+
+            var article = articles[i];
+            int remainingH = contentBottom - drawY;
+
+            // Breaking label
+            if (article.IsBreaking && remainingH > 0)
+            {
+                if (drawY >= contentTop)
+                {
+                    float pulse = MathF.Sin((float)_game.GameTime.TotalGameTime.TotalSeconds * 3f) * 0.2f + 0.8f;
+                    DrawSpacedText(sb, font, "BREAKING:",
+                        new Microsoft.Xna.Framework.Vector2(textX, drawY), new Color(255, 60, 60) * pulse);
+                }
+                drawY += 16;
+                remainingH -= 16;
+            }
+            if (remainingH <= 0) break;
+
+            // Headline
+            if (drawY >= contentTop)
+            {
+                Color headlineColor = article.Faction switch
+                {
+                    "Terran Federation" => new Color(100, 180, 255),
+                    "Trigor Empire" => new Color(255, 100, 60),
+                    _ => Color.White
+                };
+                DrawSpacedText(sb, font, article.Headline,
+                    new Microsoft.Xna.Framework.Vector2(textX + 8, drawY), headlineColor);
+            }
+            drawY += 18;
+            remainingH -= 18;
+            if (remainingH <= 0) break;
+
+            // Body (wrapped)
+            var bodyLines = _game.WordWrap(font, article.Body, maxBodyW - 16);
+            foreach (var bl in bodyLines)
+            {
+                if (remainingH <= 0) break;
+                if (drawY >= contentTop)
+                {
+                    DrawSpacedText(sb, font, bl,
+                        new Microsoft.Xna.Framework.Vector2(textX + 16, drawY), Color.White * 0.7f);
+                }
+                drawY += lineH;
+                remainingH -= lineH;
+            }
+            if (remainingH <= 0) break;
+
+            // Source line
+            if (drawY >= contentTop)
+            {
+                string sourceLine = $"-- {article.Source}";
+                if (article.Faction != null)
+                    sourceLine += $" [{article.Faction}]";
+                DrawSpacedText(sb, font, sourceLine,
+                    new Microsoft.Xna.Framework.Vector2(textX + 16, drawY), Color.Gray * 0.4f);
+            }
+            drawY += lineH + 2;
+            remainingH -= lineH + 2;
+            if (remainingH <= 0) break;
+
+            // Separator line between articles
+            if (i + 1 < articles.Count && drawY >= contentTop && drawY + 2 <= contentBottom)
+            {
+                DrawLine(sb, pixel, textX, drawY, contentRight, drawY, new Color(60, 60, 90) * 0.3f);
+                drawY += 4;
+            }
+        }
+
+        // Scroll bar
+        if (maxScroll > 0)
+        {
+            float scrollBarX = contentRight + 4;
+            float scrollAreaH = contentH;
+            float thumbH = Math.Max(20f, scrollAreaH * scrollAreaH / totalH);
+            float thumbY = contentTop + _dockedNewsScroll * (scrollAreaH - thumbH) / maxScroll;
+            DrawLine(sb, pixel, scrollBarX, contentTop, scrollBarX, contentBottom, new Color(60, 60, 100) * 0.5f);
+            DrawRect(sb, pixel, scrollBarX - 2, thumbY, 4, thumbH, new Color(120, 120, 180) * 0.7f);
         }
     }
 
