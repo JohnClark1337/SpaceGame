@@ -50,6 +50,7 @@ public class SaveGameData
     public float AiCaptureTimer { get; set; }
     public float FederationAiTimer { get; set; }
     public float AiDefenseTimer { get; set; }
+    public int InitialIndependentCount { get; set; }
     public bool IsInSystemView { get; set; }
 }
 

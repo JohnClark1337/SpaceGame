@@ -27,6 +27,7 @@ public class Game1 : Game
     private float _aiCaptureTimer;
     private float _federationAiTimer;
     private float _aiDefenseTimer;
+    private int _initialIndependentCount;
     private float _aiDefenseQuestTimer;
     private LlmService? _llmService;
     private bool _useLlm;
@@ -285,6 +286,7 @@ public class Game1 : Game
             AiCaptureTimer = _aiCaptureTimer,
             FederationAiTimer = _federationAiTimer,
             AiDefenseTimer = _aiDefenseTimer,
+            InitialIndependentCount = _initialIndependentCount,
             IsInSystemView = _viewMode == ViewMode.System
         };
 
@@ -388,6 +390,7 @@ public class Game1 : Game
             _aiCaptureTimer = data.AiCaptureTimer;
             _federationAiTimer = data.FederationAiTimer;
             _aiDefenseTimer = data.AiDefenseTimer;
+            _initialIndependentCount = data.InitialIndependentCount;
 
             // Return to galaxy view
             _viewMode = ViewMode.Galaxy;
@@ -469,6 +472,7 @@ public class Game1 : Game
         _aiCaptureTimer = 30f;
         _federationAiTimer = 30f;
         _aiDefenseTimer = 60f;
+        _initialIndependentCount = _galaxy.Systems.Count(s => s.Hostility < 3 && s.Faction != "Atlas Federation");
         _galaxy.ActiveQuests.Clear();
         _galaxy.TargetSystem = null;
 
@@ -3122,7 +3126,7 @@ public class Game1 : Game
             }
         }
 
-        // Federation actions
+        // Federation actions (defensive always allowed)
         if (decision.FederationUnblockRoutes != null)
         {
             foreach (var route in decision.FederationUnblockRoutes)
@@ -3132,7 +3136,13 @@ public class Game1 : Game
             }
         }
 
-        if (!string.IsNullOrEmpty(decision.FederationAttackSystem))
+        // Federation offensive only after Empire has captured ~half of independent systems
+        int currentIndependent = _galaxy.Systems.Count(s => s.Hostility < 3 && s.Faction != "Atlas Federation");
+        float capturedRatio = _initialIndependentCount > 0
+            ? 1f - (float)currentIndependent / _initialIndependentCount
+            : 0f;
+
+        if (capturedRatio >= 0.5f && !string.IsNullOrEmpty(decision.FederationAttackSystem))
         {
             var target = _galaxy.FindSystemById(decision.FederationAttackSystem);
             if (target != null && target.Station != null && target.Hostility >= 3)
@@ -3222,6 +3232,31 @@ public class Game1 : Game
 
     private void FederationAiTick()
     {
+        // Defensive only until Empire has captured ~half of independent systems
+        int currentIndependent = _galaxy.Systems.Count(s => s.Hostility < 3 && s.Faction != "Atlas Federation");
+        float capturedRatio = _initialIndependentCount > 0
+            ? 1f - (float)currentIndependent / _initialIndependentCount
+            : 0f;
+        bool canOffense = capturedRatio >= 0.5f;
+
+        // Always try to unblock routes near friendly space (defensive)
+        foreach (var route in _routeManager.BlockedRoutes.ToList())
+        {
+            var parts = route.Split('-');
+            if (parts.Length == 2)
+            {
+                var a = _galaxy.FindSystemById(parts[0]);
+                var b = _galaxy.FindSystemById(parts[1]);
+                if ((a != null && a.Hostility < 3) || (b != null && b.Hostility < 3))
+                {
+                    _routeManager.UnblockRoute(parts[0], parts[1]);
+                    break;
+                }
+            }
+        }
+
+        if (!canOffense) return;
+
         // Federation counter-attacks Empire systems adjacent to non-Empire systems
         var targets = _galaxy.Systems
             .Where(s => s.Hostility >= 3 && s.Station != null && s.Id != _player.CurrentSystemId)
@@ -3242,22 +3277,6 @@ public class Game1 : Game
             }
         }
         if (!adjacentToFriendly) return;
-
-        // Try to unblock a blocked route near friendly space
-        foreach (var route in _routeManager.BlockedRoutes.ToList())
-        {
-            var parts = route.Split('-');
-            if (parts.Length == 2)
-            {
-                var a = _galaxy.FindSystemById(parts[0]);
-                var b = _galaxy.FindSystemById(parts[1]);
-                if ((a != null && a.Hostility < 3) || (b != null && b.Hostility < 3))
-                {
-                    _routeManager.UnblockRoute(parts[0], parts[1]);
-                    break;
-                }
-            }
-        }
 
         FederationStartAttack(target.Id);
     }
