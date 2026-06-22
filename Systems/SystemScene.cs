@@ -94,6 +94,7 @@ public class SystemScene
     private int _trainingMenuSelection;
     private bool _trainingInvincible;
     private bool _showEnemyList;
+    private int _trainingSpawnSelection;
 
     private struct ExplosionDebris
     {
@@ -243,15 +244,8 @@ public class SystemScene
     private void InitStationDefenses()
     {
         ClearStationDefenses();
-        if (TrainingMode)
-        {
-            _stationDefenseLevel = 5;
-        }
-        else
-        {
-            if (_system.Station == null) return;
-            _stationDefenseLevel = _system.Station.DefenseLevel;
-        }
+        if (_system.Station == null && !TrainingMode) return;
+        _stationDefenseLevel = TrainingMode ? _stationDefenseLevel : _system.Station.DefenseLevel;
         if (_stationDefenseLevel < 1) return;
 
         // Level 1: 3 basic gun turrets evenly spaced around station
@@ -402,7 +396,7 @@ public class SystemScene
             angle += 1.5f;
         }
 
-        if (_system.Station != null)
+        if (_system.Station != null && !TrainingMode)
         {
             var sd = _system.Station;
             _station = new Body
@@ -427,7 +421,7 @@ public class SystemScene
         _systemRadius = MathF.Max(MathF.Max(_systemRadius, 1f) * 1.1f, _star.BodyRadius * 2f);
 
         // Ensure station orbits outside overheating range
-        if (_system.Station != null)
+        if (_system.Station != null && !TrainingMode)
         {
             float warningNorm = MathF.Pow(0.25f, 1f / 0.5f);
             float minSafe = _star.BodyRadius + warningNorm * (_systemRadius - _star.BodyRadius);
@@ -437,80 +431,6 @@ public class SystemScene
                 if (_station.OrbitRadius * 1.1f > _systemRadius)
                     _systemRadius = _station.OrbitRadius * 1.1f;
             }
-        }
-
-        // Training mode: override stations at opposite ends
-        if (TrainingMode)
-        {
-            _trainingHostile = true;
-            float stationDist = _systemRadius * 0.7f;
-
-            // Find safe placement avoiding star and planets
-            Vector2 stationPos = new Vector2(-stationDist, 0);
-            Vector2 friendlyPos = new Vector2(stationDist, 0);
-            bool overlap = true;
-            for (int attempt = 0; attempt < 8 && overlap; attempt++)
-            {
-                overlap = false;
-                // Check star overlap
-                if (stationPos.Length() < _star.BodyRadius + 50f + 20f ||
-                    friendlyPos.Length() < _star.BodyRadius + 50f + 20f)
-                {
-                    overlap = true;
-                }
-                else
-                {
-                    // Check planet overlaps
-                    foreach (var p in _planets)
-                    {
-                        Vector2 pPos = new Vector2(
-                            MathF.Cos(p.CurrentAngle) * p.OrbitRadius,
-                            MathF.Sin(p.CurrentAngle) * p.OrbitRadius);
-                        float pr = p.BodyRadius + 50f + 20f;
-                        if (Vector2.Distance(stationPos, pPos) < pr ||
-                            Vector2.Distance(friendlyPos, pPos) < pr)
-                        {
-                            overlap = true;
-                            break;
-                        }
-                    }
-                }
-                if (overlap)
-                {
-                    // Rotate both stations around the star to find clear position
-                    float rotAngle = MathF.PI / 4f;
-                    stationPos = new Vector2(
-                        stationPos.X * MathF.Cos(rotAngle) - stationPos.Y * MathF.Sin(rotAngle),
-                        stationPos.X * MathF.Sin(rotAngle) + stationPos.Y * MathF.Cos(rotAngle));
-                    friendlyPos = new Vector2(-stationPos.X, -stationPos.Y);
-                }
-            }
-
-            // Empire station (hostile, level 5) — replaces normal station
-            _station = new Body
-            {
-                Name = "Empire Station",
-                BodyRadius = 50f,
-                Color = Color.Red,
-                X = stationPos.X,
-                Y = stationPos.Y
-            };
-            _stationHealth = _stationMaxHealth;
-            _stationDefenseLevel = 5;
-            InitStationDefenses();
-
-            // Friendly station (Federation, level 5) — opposite side
-            _trainingFriendlyStation = new Body
-            {
-                Name = "Federation Station",
-                BodyRadius = 50f,
-                Color = Color.LightBlue,
-                X = friendlyPos.X,
-                Y = friendlyPos.Y
-            };
-            _trainingFriendlyHealth = _stationMaxHealth;
-            _trainingTargetPos = friendlyPos;
-            InitFriendlyStationDefenses();
         }
 
         _spawnRadius = _systemRadius * 0.80f;
@@ -538,11 +458,7 @@ public class SystemScene
 
         _waypointTargets.Clear();
         _waypointIndex = 0;
-        if (TrainingMode)
-        {
-            _waypointTargets.Add((new Vector2(_trainingFriendlyStation.X, _trainingFriendlyStation.Y), _trainingFriendlyStation.Name));
-        }
-        else if (_system.Station != null)
+        if (_system.Station != null)
         {
             _waypointTargets.Add((new Vector2(_station.X, _station.Y), _station.Name));
         }
@@ -670,11 +586,7 @@ public class SystemScene
 
             // Rebuild waypoint targets
             _waypointTargets.Clear();
-            if (TrainingMode)
-            {
-                _waypointTargets.Add((new Vector2(_trainingFriendlyStation.X, _trainingFriendlyStation.Y), _trainingFriendlyStation.Name));
-            }
-            else if (_system.Station != null)
+            if (_system.Station != null && !TrainingMode)
                 _waypointTargets.Add((new Vector2(_station.X, _station.Y), _station.Name));
             if (_game != null)
             {
@@ -707,7 +619,7 @@ public class SystemScene
                 _waypointIndex = 0;
             _waypointPosition = _waypointTargets.Count > 0
                 ? _waypointTargets[_waypointIndex].pos
-                : (_system.Station != null ? new Vector2(_station.X, _station.Y) : Vector2.Zero);
+                : (_system.Station != null && !TrainingMode ? new Vector2(_station.X, _station.Y) : Vector2.Zero);
 
             // Tab to cycle waypoint
             if (keyboard.IsKeyDown(Keys.Tab) && _prevKeyboard.IsKeyUp(Keys.Tab))
@@ -718,7 +630,7 @@ public class SystemScene
                     : _waypointPosition;
             }
 
-            // Training mode input (F1, ESC pause) - intercepts normal update
+            // Training mode input (F1 spawn menu, ESC pause) - intercepts normal update
             if (TrainingMode)
             {
                 bool esc = keyboard.IsKeyDown(Keys.Escape) && _prevKeyboard.IsKeyUp(Keys.Escape);
@@ -728,6 +640,8 @@ public class SystemScene
                 bool up = (keyboard.IsKeyDown(Keys.Up) && _prevKeyboard.IsKeyUp(Keys.Up)) ||
                           (keyboard.IsKeyDown(Keys.W) && _prevKeyboard.IsKeyUp(Keys.W));
                 bool enter = keyboard.IsKeyDown(Keys.Enter) && _prevKeyboard.IsKeyUp(Keys.Enter);
+
+                int spawnCount = 15;
 
                 if (esc)
                 {
@@ -742,8 +656,29 @@ public class SystemScene
                 if (f1)
                     _showEnemyList = !_showEnemyList;
 
-                if (esc || f1 || _showEnemyList)
+                if (_showEnemyList)
                 {
+                    if (down)
+                    {
+                        _trainingSpawnSelection++;
+                        if (_trainingSpawnSelection >= spawnCount)
+                            _trainingSpawnSelection = 0;
+                    }
+                    if (up)
+                    {
+                        _trainingSpawnSelection--;
+                        if (_trainingSpawnSelection < 0)
+                            _trainingSpawnSelection = spawnCount - 1;
+                    }
+                    if (enter)
+                    {
+                        if (_trainingSpawnSelection < 5)
+                            SpawnTrainingEnemy(_trainingSpawnSelection);
+                        else if (_trainingSpawnSelection < 10)
+                            SpawnTrainingStation("empire", _trainingSpawnSelection - 4);
+                        else
+                            SpawnTrainingStation("federation", _trainingSpawnSelection - 9);
+                    }
                     _prevKeyboard = keyboard;
                     return;
                 }
@@ -886,7 +821,7 @@ public class SystemScene
             }
 
             // Training mode: dock at friendly station
-            if (TrainingMode)
+            if (TrainingMode && _trainingFriendlyHealth > 0)
             {
                 float distToFriendly = Vector2.Distance(_player.Position, new Vector2(_trainingFriendlyStation.X, _trainingFriendlyStation.Y));
                 if (distToFriendly < 150f)
@@ -1473,10 +1408,6 @@ public class SystemScene
                 }
             }
 
-            // Spawn enemies in training mode
-            if (TrainingMode && _enemies.Count == 0 && !_exploding && !_docked)
-                SpawnScouts();
-
             if (TrainingMode)
             {
                 float h = _systemRadius;
@@ -1830,12 +1761,16 @@ public class SystemScene
         }
 
         // Station
-        float sx = starScreenX + _station.X * ZOOM;
-        float sy = starScreenY + _station.Y * ZOOM;
-        DrawStation(sb, pixel, font, sx, sy, _station, t);
+        float sx = 0f, sy = 0f;
+        if (_stationHealth > 0)
+        {
+            sx = starScreenX + _station.X * ZOOM;
+            sy = starScreenY + _station.Y * ZOOM;
+            DrawStation(sb, pixel, font, sx, sy, _station, t);
+        }
 
         // Training mode: render friendly station
-        if (TrainingMode && !_trainingFriendlyRespawning)
+        if (TrainingMode && _trainingFriendlyHealth > 0)
         {
             float fx = starScreenX + _trainingFriendlyStation.X * ZOOM;
             float fy = starScreenY + _trainingFriendlyStation.Y * ZOOM;
@@ -2392,7 +2327,7 @@ public class SystemScene
             DrawSpacedText(sb, font, label,
                 new Microsoft.Xna.Framework.Vector2(lx, ly), Color.Yellow * 0.7f);
 
-            string tip = "[F1] Enemy List  [ESC] Pause";
+            string tip = "[F1] Spawn Menu  [ESC] Pause";
             var tipSz = font.MeasureString(tip);
             DrawSpacedText(sb, font, tip,
                 new Microsoft.Xna.Framework.Vector2(lx + labelSz.X - tipSz.X, ly + 22f), Color.Gray * 0.6f);
@@ -2428,36 +2363,55 @@ public class SystemScene
             }
         }
 
-        // Training enemy list overlay
+        // Training spawn menu overlay
         if (_showEnemyList)
         {
             sb.Draw(pixel, new Microsoft.Xna.Framework.Rectangle(0, 0, screenW, screenH),
                 new Color(0, 0, 0, 160));
 
-            string hdr = "TARGET LIST";
+            string hdr = "SPAWN MENU";
             var hSz = titleFont.MeasureString(hdr);
             float hX = (screenW - hSz.X) / 2f;
-            float hY = screenH * 0.15f;
+            float hY = screenH * 0.12f;
             DrawSpacedText(sb, titleFont, hdr,
                 new Microsoft.Xna.Framework.Vector2(hX, hY), Color.Yellow);
 
-            string[] enemies = {
-                "1. Pirate Scout - Easy",
-                "2. Raider Fighter - Easy",
-                "3. Mercenary Gunship - Medium",
-                "4. Syndicate Cruiser - Hard",
-                "5. Void Dreadnought - Extreme"
-            };
-            float startY = hY + 60f;
-            for (int i = 0; i < enemies.Length; i++)
+            // Build display list with section headers
+            var lines = new List<(string text, bool isHeader, int? itemIndex)>();
+            lines.Add(("-- Enemy Ships --", true, null));
+            string[] enemyNames = { "Pirate Scout", "Raider Fighter", "Mercenary Gunship", "Syndicate Cruiser", "Void Dreadnought" };
+            for (int i = 0; i < enemyNames.Length; i++)
+                lines.Add((enemyNames[i], false, i));
+            lines.Add(("-- Stations --", true, null));
+            string[] stationNames = { "Empire Station L1", "Empire Station L2", "Empire Station L3", "Empire Station L4", "Empire Station L5",
+                                      "Federation Station L1", "Federation Station L2", "Federation Station L3", "Federation Station L4", "Federation Station L5" };
+            for (int i = 0; i < stationNames.Length; i++)
+                lines.Add((stationNames[i], false, 5 + i));
+
+            float startY = hY + 50f;
+            for (int i = 0; i < lines.Count; i++)
             {
-                var eSz = font.MeasureString(enemies[i]);
-                float eX = (screenW - eSz.X) / 2f;
-                DrawSpacedText(sb, font, enemies[i],
-                    new Microsoft.Xna.Framework.Vector2(eX, startY + i * 30f), Color.Gray * 0.8f);
+                var (text, isHeader, itemIndex) = lines[i];
+                float y = startY + i * 24f;
+                if (isHeader)
+                {
+                    var sSz = font.MeasureString(text);
+                    float sX = (screenW - sSz.X) / 2f;
+                    DrawSpacedText(sb, font, text,
+                        new Microsoft.Xna.Framework.Vector2(sX, y), Color.Gold);
+                }
+                else
+                {
+                    bool selected = itemIndex.HasValue && itemIndex.Value == _trainingSpawnSelection;
+                    Color c = selected ? Color.White : Color.Gray * 0.8f;
+                    string prefix = selected ? "> " : "  ";
+                    float indent = 60f;
+                    DrawSpacedText(sb, font, prefix + text,
+                        new Microsoft.Xna.Framework.Vector2(indent, y), c);
+                }
             }
 
-            string close = "[F1] or [ESC] to close";
+            string close = "[F1] or [ESC] to close  [Enter] to spawn";
             var cSz = font.MeasureString(close);
             float cX = (screenW - cSz.X) / 2f;
             DrawSpacedText(sb, font, close,
@@ -3367,7 +3321,7 @@ public class SystemScene
             FillCircle(sb, pixel, stx, sty, stR, stColor);
 
             // Training mode: draw friendly station too
-            if (TrainingMode)
+            if (TrainingMode && _trainingFriendlyHealth > 0)
             {
                 float ftx = cx + _trainingFriendlyStation.X * scale;
                 float fty = cy + _trainingFriendlyStation.Y * scale;
@@ -3693,6 +3647,81 @@ public class SystemScene
                 }
             }
         }
+    }
+
+    private void SpawnTrainingStation(string kind, int level)
+    {
+        if (level < 1 || level > 5) return;
+
+        float spawnAngle = RandF() * MathF.Tau;
+        float spawnDist = 400f + RandF() * 200f;
+        Vector2 pos = _player.Position + Vector2.FromAngle(spawnAngle) * spawnDist;
+
+        if (kind == "empire")
+        {
+            _station = new Body
+            {
+                Name = $"Empire Station L{level}",
+                BodyRadius = 50f,
+                Color = Color.Red,
+                X = pos.X,
+                Y = pos.Y
+            };
+            _stationHealth = _stationMaxHealth;
+            _stationDefenseLevel = level;
+            _trainingHostile = true;
+            InitStationDefenses();
+        }
+        else
+        {
+            _trainingFriendlyStation = new Body
+            {
+                Name = $"Federation Station L{level}",
+                BodyRadius = 50f,
+                Color = Color.LightBlue,
+                X = pos.X,
+                Y = pos.Y
+            };
+            _trainingFriendlyHealth = _stationMaxHealth;
+            _trainingTargetPos = pos;
+            InitFriendlyStationDefenses();
+        }
+    }
+
+    private void SpawnTrainingEnemy(int typeIndex)
+    {
+        float health;
+        float shootCooldown;
+        string typeName;
+
+        switch (typeIndex)
+        {
+            case 0: health = 3f; shootCooldown = 2.0f; typeName = "scout"; break;
+            case 1: health = 5f; shootCooldown = 1.5f; typeName = "fighter"; break;
+            case 2: health = 8f; shootCooldown = 1.2f; typeName = "gunship"; break;
+            case 3: health = 15f; shootCooldown = 1.0f; typeName = "cruiser"; break;
+            case 4: health = 25f; shootCooldown = 0.8f; typeName = "dreadnought"; break;
+            default: return;
+        }
+
+        float spawnAngle = RandF() * MathF.Tau;
+        float spawnDist = 300f + RandF() * 200f;
+        Vector2 pos = _player.Position + Vector2.FromAngle(spawnAngle) * spawnDist;
+        float a = RandF() * MathF.Tau;
+
+        _enemies.Add(new EnemyShip
+        {
+            Position = pos,
+            Velocity = Vector2.FromAngle(a) * (80f + RandF() * 70f),
+            Angle = a,
+            Health = health,
+            MaxHealth = health,
+            Type = typeName,
+            ShootCooldown = shootCooldown,
+            AiState = AiState.Attack,
+            StateTimer = 0f,
+            OrbitAngle = spawnAngle
+        });
     }
 
     private void SpawnScouts()
