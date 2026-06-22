@@ -155,6 +155,16 @@ public class Game1 : Game
 
         _galaxy.LoadData();
         _routeManager.SetGalaxy(_galaxy);
+
+        // Set initial Empire defense levels
+        var trigor = _galaxy.FindSystemById("trigor");
+        if (trigor?.Station != null) trigor.Station.DefenseLevel = 5;
+        var trigorAlpha = _galaxy.FindSystemById("trigor_alpha");
+        if (trigorAlpha?.Station != null) trigorAlpha.Station.DefenseLevel = 3;
+        var trigorBeta = _galaxy.FindSystemById("trigor_beta");
+        if (trigorBeta?.Station != null) trigorBeta.Station.DefenseLevel = 2;
+        var trigorGamma = _galaxy.FindSystemById("trigor_gamma");
+        if (trigorGamma?.Station != null) trigorGamma.Station.DefenseLevel = 1;
         _aiTickTimer = 8f;
         _aiCaptureTimer = 30f;
         _federationAiTimer = 30f;
@@ -2937,14 +2947,67 @@ public class Game1 : Game
 
     private void AiDefenseTick()
     {
-        var aiSystems = _galaxy.Systems
+        // Federation systems: auto-upgrade to level 3
+        var fedSystems = _galaxy.Systems
             .Where(s => s.Station != null && s.Station.DefenseLevel < 3)
-            .Where(s => s.Faction == "Terran Federation" || s.Faction == "Trigor Empire")
+            .Where(s => s.Faction == "Terran Federation")
             .ToList();
-        if (aiSystems.Count == 0) return;
+        if (fedSystems.Count > 0)
+        {
+            var target = fedSystems[Random.Shared.Next(fedSystems.Count)];
+            target.Station.DefenseLevel++;
+            return;
+        }
 
-        var target = aiSystems[Random.Shared.Next(aiSystems.Count)];
-        target.Station.DefenseLevel++;
+        // Empire systems: auto-upgrade to level 5, weighted by distance from Trigor
+        var empSystems = _galaxy.Systems
+            .Where(s => s.Station != null && s.Station.DefenseLevel < 5)
+            .Where(s => s.Faction == "Trigor Empire")
+            .ToList();
+        if (empSystems.Count == 0) return;
+
+        // Weight: closer to "trigor" = higher probability
+        var weighted = new List<(StarSystemData sys, int weight)>();
+        foreach (var sys in empSystems)
+        {
+            int dist = GetHopDistance("trigor", sys.Id);
+            int weight = Math.Max(1, 5 - dist); // dist 0=5, 1=4, 2=3, etc.
+            weighted.Add((sys, weight));
+        }
+
+        int totalWeight = weighted.Sum(w => w.weight);
+        int roll = Random.Shared.Next(totalWeight);
+        int cumulative = 0;
+        foreach (var (sys, weight) in weighted)
+        {
+            cumulative += weight;
+            if (roll < cumulative)
+            {
+                sys.Station.DefenseLevel++;
+                return;
+            }
+        }
+    }
+
+    private int GetHopDistance(string from, string to)
+    {
+        if (from == to) return 0;
+        var visited = new HashSet<string> { from };
+        var queue = new Queue<(string id, int dist)>();
+        queue.Enqueue((from, 0));
+        while (queue.Count > 0)
+        {
+            var (cur, dist) = queue.Dequeue();
+            var sys = _galaxy.FindSystemById(cur);
+            if (sys == null) continue;
+            foreach (var conn in sys.Connections)
+            {
+                if (conn == to) return dist + 1;
+                if (visited.Add(conn))
+                    queue.Enqueue((conn, dist + 1));
+            }
+        }
+        return 99;
     }
 
     private void GenerateDefenseQuest()
@@ -2952,7 +3015,7 @@ public class Game1 : Game
         var candidates = _galaxy.Systems
             .Where(s => s.Station != null &&
                 s.Station.DefenseLevel >= 3 && s.Station.DefenseLevel < 5)
-            .Where(s => s.Faction == "Terran Federation" || s.Faction == "Trigor Empire")
+            .Where(s => s.Faction == "Terran Federation")
             .ToList();
         if (candidates.Count == 0) return;
 
