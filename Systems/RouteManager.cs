@@ -55,6 +55,13 @@ public class RouteManager
 
     public int CountBlocked => _blockedRoutes.Count;
 
+    public bool IsRouteBetweenEnemySystems(string a, string b)
+    {
+        var sysA = _galaxy.FindSystemById(a);
+        var sysB = _galaxy.FindSystemById(b);
+        return sysA != null && sysB != null && sysA.Hostility >= 3 && sysB.Hostility >= 3;
+    }
+
     // --- Blocking ---
     public bool BlockRoute(string a, string b)
     {
@@ -159,6 +166,7 @@ public class RouteManager
                 if (seen.Contains(key)) continue;
                 seen.Add(key);
                 if (_blockedRoutes.Contains(key)) continue;
+                if (!IsRouteBetweenEnemySystems(sys.Id, conn)) continue;
 
                 // Temporarily block and measure impact on quest paths
                 _blockedRoutes.Add(key);

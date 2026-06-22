@@ -39,6 +39,7 @@ public class SystemScene
     private int _dockedUpgradeSelection;
     private bool _nearEdge;
     private bool _nearPlanet;
+    private bool _underAttack;
     private bool _initialized;
     private float _temperature;
     private bool _exploding;
@@ -296,6 +297,32 @@ public class SystemScene
         // Spawn enemies in hostile systems (scales with proximity to Trigor core)
         if (_system.Hostility >= 3)
             SpawnHostileEnemies();
+
+        // Spawn raiders for under-attack systems (non-hostile)
+        if (_game != null && _game.IsSystemUnderAttack(_system.Id) && _system.Hostility < 3)
+        {
+            _underAttack = true;
+            int count = 4 + Random.Shared.Next(3);
+            for (int i = 0; i < count; i++)
+            {
+                Vector2 spawnPos = _player.Position + new Vector2(
+                    (float)(Random.Shared.NextDouble() * 400f - 200f),
+                    (float)(Random.Shared.NextDouble() * 400f - 200f));
+                _enemies.Add(new EnemyShip
+                {
+                    Position = spawnPos,
+                    Velocity = Vector2.Zero,
+                    Angle = 0f,
+                    Health = 4f,
+                    MaxHealth = 4f,
+                    Type = "scout",
+                    ShootCooldown = (float)Random.Shared.NextDouble() * 1f,
+                    AiState = AiState.Attack,
+                    StateTimer = 2f,
+                    OrbitAngle = (float)Random.Shared.NextDouble() * MathF.PI * 2f
+                });
+            }
+        }
     }
 
     private static float RandF() { return (float)Random.Shared.NextDouble(); }
@@ -1125,16 +1152,15 @@ public class SystemScene
                 }
             }
 
-            // Enemy-player collision (ramming) - disabled
-            //for (int i = 0; i < _enemies.Count; i++)
-            //{
-            //    var e = _enemies[i];
-            //    if (Vector2.Distance(e.Position, _player.Position) < 25f * ZOOM)
-            //    {
-            //        _player.Health = 0;
-            //        break;
-            //    }
-            //}
+            // Under-attack repel: all enemies dead → attack repelled
+            if (_underAttack && _enemies.Count == 0 && !_exploding && !_docked)
+            {
+                _underAttack = false;
+                _game?.RepelAttack(_system.Id);
+                _pickupMessage = "Raiders eliminated! System defense successful!";
+                _pickupTimer = 3f;
+                _showPickupDialog = true;
+            }
 
             // Spawn enemies in training mode
             if (TrainingMode && _enemies.Count == 0 && !_exploding && !_docked)
@@ -2056,7 +2082,7 @@ public class SystemScene
         float pulse = MathF.Sin(t * 2f) * 0.05f + 1f;
         float r = station.BodyRadius * ZOOM * pulse;
 
-        bool isEnemy = _system.Hostility >= 3;
+        bool isEnemy = _system.Hostility >= 3 || _underAttack;
         Color baseColor = isEnemy ? new Color(200, 60, 60) : Color.LightBlue;
         Color glowColor = isEnemy ? new Color(255, 80, 80) : Color.Cyan;
         Color dimGlow = isEnemy ? new Color(180, 40, 40) : Color.LightBlue;

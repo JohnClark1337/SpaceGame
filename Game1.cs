@@ -2,6 +2,7 @@ using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
 using SpaceGame.Models;
+using SpaceGame.Services;
 using SpaceGame.Systems;
 using Color = Microsoft.Xna.Framework.Color;
 using Vector2 = SpaceGame.Systems.Vector2;
@@ -23,6 +24,11 @@ public class Game1 : Game
     private readonly Starfield _starfield = new();
     private float _aiTickTimer;
     private float _aiCaptureTimer;
+    private LlmService? _llmService;
+    private bool _useLlm;
+    private bool _llmChecked;
+    private readonly Dictionary<string, AttackState> _activeAttacks = new();
+    private const float AttackDuration = 60f;
 
     public RouteManager RouteManager => _routeManager;
     public Galaxy Galaxy => _galaxy;
@@ -194,6 +200,7 @@ public class Game1 : Game
     {
         _galaxy.LoadData();
         _routeManager = new RouteManager(_galaxy);
+        _llmService = new LlmService();
 
         if (_galaxy.Systems.Count == 0)
             _statusMessage = "ERROR: No systems loaded! Check Data/*.json files.";
@@ -676,25 +683,59 @@ public class Game1 : Game
             _prevKeyboard = keyboard;
             _prevMouse = mouse;
 
-            // AI commander tick (every 4 seconds)
+            // AI commander logic
             if (_player.CurrentSystemId != null)
             {
-                _aiTickTimer -= dt;
-                if (_aiTickTimer <= 0f)
+                if (!_llmChecked)
                 {
-                    _aiTickTimer = 4f;
-                    _routeManager.AiTick(_player.CurrentSystemId);
+                    _llmChecked = true;
+                    _ = CheckLlmAsync();
+                }
+
+                if (_useLlm)
+                {
+                    _aiTickTimer -= dt;
+                    if (_aiTickTimer <= 0f)
+                    {
+                        _aiTickTimer = 15f;
+                        _ = LlmAiTickAsync();
+                    }
+                }
+                else
+                {
+                    // Rule-based route blocking (enemy-system routes only, filtered by RouteManager)
+                    _aiTickTimer -= dt;
+                    if (_aiTickTimer <= 0f)
+                    {
+                        _aiTickTimer = 4f;
+                        _routeManager.AiTick(_player.CurrentSystemId);
+                    }
+
+                    // Rule-based station capture
+                    _aiCaptureTimer -= dt;
+                    if (_aiCaptureTimer <= 0f)
+                    {
+                        _aiCaptureTimer = 30f;
+                        AiCaptureTick();
+                    }
                 }
             }
 
-            // AI station capture tick (every 30 seconds)
-            if (_player.CurrentSystemId != null)
+            // Attack timer — pauses while player is inside the attacked system
+            if (_viewMode == ViewMode.System && _galaxy.CurrentSystem != null &&
+                _activeAttacks.ContainsKey(_galaxy.CurrentSystem.Id))
             {
-                _aiCaptureTimer -= dt;
-                if (_aiCaptureTimer <= 0f)
+                // Timer frozen — player is on-site
+            }
+            else
+            {
+                foreach (var id in _activeAttacks.Keys.ToList())
                 {
-                    _aiCaptureTimer = 30f;
-                    AiCaptureTick();
+                    _activeAttacks[id].Timer -= dt;
+                    if (_activeAttacks[id].Timer <= 0f)
+                    {
+                        ResolveAttack(id);
+                    }
                 }
             }
 
@@ -1108,7 +1149,7 @@ public class Game1 : Game
             if (sx < -150 || sx > ScreenWidth + 150 || sy < -150 || sy > ScreenHeight + 150)
                 continue;
 
-            Color color = ParseColor(sys.Color);
+            Color color = GetFactionColor(sys.Faction);
             float t = (float)_gameTime.TotalGameTime.TotalSeconds;
             float pulse = MathF.Sin(t * 1.5f + sys.X * 0.01f) * 0.12f + 1f;
             float drawRadius = sys.Radius * pulse;
@@ -1149,6 +1190,19 @@ public class Game1 : Game
                 float pulse2 = MathF.Sin((float)_gameTime.TotalGameTime.TotalSeconds * 2f) * 0.3f + 0.7f;
                 DrawCircle(sx, sy, drawRadius + 18f, Color.Gold * pulse2);
                 DrawCircle(sx, sy, drawRadius + 24f, Color.Gold * pulse2 * 0.3f);
+            }
+
+            // Under-attack indicator
+            if (_activeAttacks.ContainsKey(sys.Id) && _player.CurrentSystemId != sys.Id)
+            {
+                float pulse3 = MathF.Sin((float)_gameTime.TotalGameTime.TotalSeconds * 3f) * 0.25f + 0.75f;
+                Color atkColor = new Color(255, 120, 0) * pulse3;
+                DrawCircle(sx, sy, drawRadius + 14f, atkColor);
+                DrawCircle(sx, sy, drawRadius + 22f, atkColor * 0.3f);
+                var atkSz = _font.MeasureString("UNDER ATTACK");
+                DrawSpacedText(_font, "UNDER ATTACK",
+                    new Microsoft.Xna.Framework.Vector2(sx - atkSz.X / 2f, sy - drawRadius - atkSz.Y - 10),
+                    atkColor);
             }
 
             // Distance hint for non-current systems
@@ -1332,6 +1386,17 @@ public class Game1 : Game
         DrawSpacedText(_font, $"AI [{diffStr}]  Blockades: {blockedCount}/{maxBlocked}",
             new Microsoft.Xna.Framework.Vector2(10, 170), aiColor);
 
+        // LLM commander notification
+        if (_useLlm)
+        {
+            string llmLabel = "LLM Commander Active";
+            var llmSz = _font.MeasureString(llmLabel);
+            float pulse = MathF.Sin((float)_gameTime.TotalGameTime.TotalSeconds * 2f) * 0.15f + 0.85f;
+            DrawSpacedText(_font, llmLabel,
+                new Microsoft.Xna.Framework.Vector2((ScreenWidth - llmSz.X) / 2f, 6),
+                new Color(100, 200, 255) * pulse);
+        }
+
         if (_isTraveling)
         {
             // Travel in progress
@@ -1378,11 +1443,18 @@ public class Game1 : Game
                     Color c;
                     string prefix;
                     string suffix = "";
+                    bool connUnderAttack = _activeAttacks.ContainsKey(conn.Id);
                     if (blocked)
                     {
                         c = Color.Red * 0.5f;
                         prefix = "  ";
                         suffix = "  BLOCKED";
+                    }
+                    else if (connUnderAttack)
+                    {
+                        c = new Color(255, 150, 50) * 0.9f;
+                        prefix = "  ";
+                        suffix = "  UNDER ATTACK";
                     }
                     else if (!inRange)
                     {
@@ -1503,7 +1575,7 @@ public class Game1 : Game
         {
             float sx = mapX + mapW / 2f + (sys.X - cx) * scale;
             float sy = mapY + mapH / 2f + (sys.Y - cy) * scale;
-            Color c = ParseColor(sys.Color);
+            Color c = GetFactionColor(sys.Faction);
             DrawCircle(sx, sy, 3f, c);
 
             bool isCurrent = _player.CurrentSystemId == sys.Id;
@@ -1584,6 +1656,14 @@ public class Game1 : Game
             DrawSpacedText(_font, $"Hostility Level: {sys.Hostility}/10", new Microsoft.Xna.Framework.Vector2(textX, textY),
                 sys.Hostility > 3 ? Color.OrangeRed : Color.LimeGreen);
             textY += 20;
+
+            if (_activeAttacks.ContainsKey(sys.Id))
+            {
+                float pulse = MathF.Sin((float)_gameTime.TotalGameTime.TotalSeconds * 3f) * 0.2f + 0.8f;
+                DrawSpacedText(_font, "*** UNDER ATTACK ***", new Microsoft.Xna.Framework.Vector2(textX, textY),
+                    new Color(255, 120, 0) * pulse);
+                textY += 22;
+            }
 
             if (sys.Services.Count > 0)
             {
@@ -2083,7 +2163,7 @@ public class Game1 : Game
             float sx = originX + (sys.X - cx) * scale;
             float sy = originY + (sys.Y - cy2) * scale;
 
-            Color color = ParseColor(sys.Color);
+            Color color = GetFactionColor(sys.Faction);
             FillCircle(sx, sy, MathF.Max(sys.Radius * scale * 0.6f, 3f), color * 0.8f);
             DrawCircle(sx, sy, MathF.Max(sys.Radius * scale * 0.6f, 3f), color);
 
@@ -2097,6 +2177,15 @@ public class Game1 : Game
             {
                 float pulse = MathF.Sin((float)_gameTime.TotalGameTime.TotalSeconds * 2f) * 0.3f + 0.7f;
                 DrawCircle(sx, sy, 12f, Color.Gold * pulse);
+            }
+
+            // Under-attack indicator on galaxy map overlay
+            if (_activeAttacks.ContainsKey(sys.Id))
+            {
+                float pulse3 = MathF.Sin((float)_gameTime.TotalGameTime.TotalSeconds * 3f) * 0.25f + 0.75f;
+                Color atkColor = new Color(255, 120, 0) * pulse3;
+                DrawCircle(sx, sy, MathF.Max(sys.Radius * scale * 0.6f, 3f) + 6f, atkColor);
+                DrawCircle(sx, sy, MathF.Max(sys.Radius * scale * 0.6f, 3f) + 10f, atkColor * 0.3f);
             }
 
             // Name label
@@ -2548,64 +2637,139 @@ public class Game1 : Game
         return lines;
     }
 
+    public bool IsSystemUnderAttack(string systemId) => _activeAttacks.ContainsKey(systemId);
+
+    public void StartAttack(string systemId)
+    {
+        var sys = _galaxy.FindSystemById(systemId);
+        if (sys == null || sys.Hostility >= 3 || _activeAttacks.ContainsKey(systemId)) return;
+        _activeAttacks[systemId] = new AttackState { Timer = AttackDuration };
+        _statusMessage = $"Trigor Empire is attacking {sys.Name}!";
+        _statusTimer = 5f;
+    }
+
+    public void RepelAttack(string systemId)
+    {
+        if (!_activeAttacks.Remove(systemId)) return;
+        var sys = _galaxy.FindSystemById(systemId);
+        string name = sys?.Name ?? systemId;
+        _statusMessage = $"Attack on {name} repelled!";
+        _statusTimer = 5f;
+    }
+
+    public bool TryGetAttackTimer(string systemId, out float remaining)
+    {
+        if (_activeAttacks.TryGetValue(systemId, out var state))
+        {
+            remaining = state.Timer;
+            return true;
+        }
+        remaining = 0;
+        return false;
+    }
+
+    private async Task CheckLlmAsync()
+    {
+        if (_llmService == null) return;
+        _useLlm = await _llmService.DetectAsync();
+        if (_useLlm)
+        {
+            _statusMessage = "LLM commander online";
+            _statusTimer = 4f;
+        }
+    }
+
+    private async Task LlmAiTickAsync()
+    {
+        if (_llmService == null || _player.CurrentSystemId == null) return;
+
+        var decision = await _llmService.RequestDecisionAsync(
+            _galaxy.Systems,
+            _player.CurrentSystemId,
+            _routeManager.BlockedRoutes,
+            _routeManager.MaxBlocked,
+            _galaxy.ActiveQuests);
+
+        if (decision == null)
+        {
+            _routeManager.AiTick(_player.CurrentSystemId);
+            AiCaptureTick();
+            return;
+        }
+
+        if (decision.BlockRoutes != null)
+        {
+            foreach (var route in decision.BlockRoutes)
+            {
+                if (route.Count >= 2)
+                    _routeManager.BlockRoute(route[0], route[1]);
+            }
+        }
+
+        if (!string.IsNullOrEmpty(decision.AttackSystem))
+        {
+            var target = _galaxy.FindSystemById(decision.AttackSystem);
+            if (target != null && target.Station != null && target.Hostility < 3)
+            {
+                bool adjacent = false;
+                foreach (var conn in target.Connections)
+                {
+                    var neighbor = _galaxy.FindSystemById(conn);
+                    if (neighbor != null && neighbor.Hostility >= 3)
+                    {
+                        adjacent = true;
+                        break;
+                    }
+                }
+                if (adjacent)
+                    StartAttack(target.Id);
+            }
+        }
+    }
+
+    private void ResolveAttack(string systemId)
+    {
+        var sys = _galaxy.FindSystemById(systemId);
+        if (sys == null) return;
+
+        sys.Hostility = 5;
+        sys.Faction = "Trigor Empire";
+
+        if (sys.Connections.Count > 0)
+        {
+            var blockedConn = sys.Connections[Random.Shared.Next(sys.Connections.Count)];
+            _routeManager.BlockRoute(sys.Id, blockedConn);
+        }
+
+        _activeAttacks.Remove(systemId);
+        _statusMessage = $"Trigor Empire has captured {sys.Name}!";
+        _statusTimer = 5f;
+    }
+
     private void AiCaptureTick()
     {
-        // Find a non-hostile system with a station to capture
         var targets = _galaxy.Systems
             .Where(s => s.Hostility < 3 && s.Station != null && s.Id != _player.CurrentSystemId)
             .ToList();
         if (targets.Count == 0) return;
 
-        // Pick a random target
         var target = targets[Random.Shared.Next(targets.Count)];
 
-        // Check if it's reachable from hostile territory (within 2 hops of a hostile system)
-        bool reachable = false;
+        // Empire can ONLY attack systems directly adjacent to an Empire system (1 hop)
+        bool adjacentToEmpire = false;
         foreach (var conn in target.Connections)
         {
             var neighbor = _galaxy.FindSystemById(conn);
-            if (neighbor != null && (neighbor.Hostility >= 3 || neighbor.Faction == "Trigor Empire"))
+            if (neighbor != null && neighbor.Hostility >= 3)
             {
-                reachable = true;
+                adjacentToEmpire = true;
                 break;
             }
         }
-        if (!reachable)
-        {
-            // Check 2-hop reachability
-            foreach (var conn in target.Connections)
-            {
-                var neighbor = _galaxy.FindSystemById(conn);
-                if (neighbor == null) continue;
-                foreach (var conn2 in neighbor.Connections)
-                {
-                    var neighbor2 = _galaxy.FindSystemById(conn2);
-                    if (neighbor2 != null && (neighbor2.Hostility >= 3 || neighbor2.Faction == "Trigor Empire"))
-                    {
-                        reachable = true;
-                        break;
-                    }
-                }
-                if (reachable) break;
-            }
-        }
-        if (!reachable) return;
+        if (!adjacentToEmpire) return;
 
-        // Capture the station
-        target.Hostility = 5;
-        target.Faction = "Trigor Empire";
-
-        // Block a random route to/from this system
-        if (target.Connections.Count > 0)
-        {
-            var blockedConn = target.Connections[Random.Shared.Next(target.Connections.Count)];
-            _routeManager.BlockRoute(target.Id, blockedConn);
-        }
-
-        // Notify player if in galaxy view
-        string msg = $"Trigor Empire has captured {target.Name}!";
-        _statusMessage = msg;
-        _statusTimer = 5f;
+        // Start attack (60s timer) instead of instant capture
+        StartAttack(target.Id);
     }
 
     private void DrawStatusMessage()
@@ -2659,6 +2823,17 @@ public class Game1 : Game
                 cx + MathF.Cos(a2) * r, cy + MathF.Sin(a2) * r,
                 color);
         }
+    }
+
+    private static Color GetFactionColor(string? faction)
+    {
+        return faction switch
+        {
+            "Terran Federation" => new Color(60, 130, 255),
+            "Trigor Empire" => new Color(255, 60, 30),
+            "Independent" => new Color(60, 200, 60),
+            _ => Color.Gray
+        };
     }
 
     private static Color ParseColor(string hex)
@@ -2730,4 +2905,9 @@ public class Starfield
             if (Stars[i].Y < -10000f) Stars[i].Y += 20000f;
         }
     }
+}
+
+public class AttackState
+{
+    public float Timer { get; set; }
 }
