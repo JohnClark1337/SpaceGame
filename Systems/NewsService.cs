@@ -83,7 +83,7 @@ public class NewsService
         _articles.Add(new NewsArticle
         {
             Headline = "Atlas Federation Council Affirms Commitment to Peace",
-            Body = "The Terran Federation Council has issued a statement reaffirming its dedication to protecting all sovereign systems from external aggression. Naval patrols have been increased along the frontier.",
+            Body = "The Atlas Federation Council has issued a statement reaffirming its dedication to protecting all sovereign systems from external aggression. Naval patrols have been increased along the frontier.",
             Source = "Atlas Federation News Network",
             Faction = "Atlas Federation",
             Timestamp = 0,

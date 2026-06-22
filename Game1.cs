@@ -3011,7 +3011,7 @@ public class Game1 : Game
         _statusTimer = 5f;
         _galaxy.NewsService?.PostBreakingNews(
             $"Trigor Empire Launches Assault on {sys.Name}",
-            $"Imperial forces have initiated a military strike against {sys.Name}. Civilians are urged to evacuate. The Terran Federation has condemned the attack.",
+            $"Imperial forces have initiated a military strike against {sys.Name}. Civilians are urged to evacuate. The Atlas Federation has condemned the attack.",
             "Imperial Herald", "Trigor Empire");
     }
 
@@ -3179,7 +3179,7 @@ public class Game1 : Game
             _statusMessage = $"Atlas Federation has captured {sys.Name}!";
             _galaxy.NewsService?.PostBreakingNews(
                 $"Atlas Federation Liberates {sys.Name}",
-                $"The Terran Federation has successfully captured {sys.Name}, dealing a blow to Trigor Empire aggression in the sector.",
+                $"The Atlas Federation has successfully captured {sys.Name}, dealing a blow to Trigor Empire aggression in the sector.",
                 "Atlas Federation News Network", "Atlas Federation");
         }
         else

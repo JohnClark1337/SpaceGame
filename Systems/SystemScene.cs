@@ -3165,7 +3165,7 @@ public class SystemScene
             {
                 Color headlineColor = article.Faction switch
                 {
-                    "Terran Federation" => new Color(100, 180, 255),
+                    "Atlas Federation" => new Color(100, 180, 255),
                     "Trigor Empire" => new Color(255, 100, 60),
                     _ => Color.White
                 };
