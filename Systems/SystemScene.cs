@@ -119,6 +119,7 @@ public class SystemScene
         public Vector2 Velocity;
         public float Lifetime;
         public bool IsPlayerBullet;
+        public float Damage;
     }
     private List<Bullet> _bullets = new();
     private const float BULLET_SPEED = 500f;
@@ -130,6 +131,7 @@ public class SystemScene
         public Vector2 Velocity;
         public float Lifetime;
         public int TargetIndex;
+        public bool IsEnemyMissile;
     }
     private List<Missile> _missiles = new();
     private float _weaponCooldown;
@@ -156,6 +158,23 @@ public class SystemScene
         public AiState AiState;
         public float StateTimer;
         public float OrbitAngle;
+        public float Shields;
+        public float MaxShields;
+        public float WeaponDamage;
+        public float TurretCooldown1;
+        public float TurretCooldown2;
+        public float TurretCooldown3;
+        public float MissileCooldown1;
+        public float MissileCooldown2;
+        public float BattleshipFrontHP;
+        public float BattleshipFrontMaxHP;
+        public float BattleshipMidHP;
+        public float BattleshipMidMaxHP;
+        public float BattleshipRearHP;
+        public float BattleshipRearMaxHP;
+        public bool MovementDisabled;
+        public bool WeaponsDisabled;
+        public string Faction;
     }
     private List<EnemyShip> _enemies = new();
 
@@ -491,27 +510,50 @@ public class SystemScene
         if (_game != null && _game.IsSystemUnderAttack(_system.Id) && _system.Hostility < 3)
         {
             _underAttack = true;
-            int count = 4 + Random.Shared.Next(3);
+            string? attacker = _game.GetAttackAttacker(_system.Id);
+            bool isFederationAttack = attacker == "Atlas Federation";
+            string faction = isFederationAttack ? "Atlas Federation" : "";
+
+            // Fleet composition based on attacker
+            int distFromCore = isFederationAttack
+                ? GetHopDistance("atlas", _system.Id)
+                : GetHopDistance("trigor", _system.Id);
+            int count = 4 + Random.Shared.Next(3) + Math.Max(0, 4 - distFromCore);
+
+            string[] typePool;
+            if (distFromCore <= 1)
+                typePool = new[] { "battleship", "destroyer", "missile_frigate", "cruiser", "gunship", "interceptor", "fighter", "scout" };
+            else if (distFromCore <= 2)
+                typePool = new[] { "destroyer", "missile_frigate", "cruiser", "gunship", "interceptor", "fighter", "scout" };
+            else if (distFromCore <= 4)
+                typePool = new[] { "cruiser", "gunship", "interceptor", "fighter", "scout" };
+            else
+                typePool = new[] { "gunship", "interceptor", "fighter", "scout" };
+
             for (int i = 0; i < count; i++)
             {
-                Vector2 spawnPos = _player.Position + new Vector2(
-                    (float)(Random.Shared.NextDouble() * 400f - 200f),
-                    (float)(Random.Shared.NextDouble() * 400f - 200f));
-                _enemies.Add(new EnemyShip
-                {
-                    Position = spawnPos,
-                    Velocity = Vector2.Zero,
-                    Angle = 0f,
-                    Health = 4f,
-                    MaxHealth = 4f,
-                    Type = "scout",
-                    ShootCooldown = (float)Random.Shared.NextDouble() * 1f,
-                    AiState = AiState.Attack,
-                    StateTimer = 2f,
-                    OrbitAngle = (float)Random.Shared.NextDouble() * MathF.PI * 2f
-                });
+                float sa = RandF() * MathF.Tau;
+                float spawnDist = 100f + RandF() * 300f;
+                Vector2 pos = _player.Position + Vector2.FromAngle(sa) * spawnDist;
+                float a = RandF() * MathF.Tau;
+                string type = typePool[Random.Shared.Next(typePool.Length)];
+                _enemies.Add(MakeEnemyShip(type, pos,
+                    Vector2.FromAngle(a) * (80f + RandF() * 70f), a,
+                    AiState.Attack, 2f, sa, faction));
             }
         }
+
+        // Federation patrols in friendly systems
+        if (!TrainingMode && _system.Hostility < 3)
+            SpawnFederationPatrols();
+
+        // Empire scouts in systems within 2 hops of Empire
+        if (!TrainingMode)
+            SpawnEmpireScouts();
+
+        // Empire patrols in enemy territory
+        if (!TrainingMode && (_system.Faction == "Trigor Empire" || _system.Hostility >= 3))
+            SpawnEmpirePatrols();
     }
 
     private static float RandF() { return (float)Random.Shared.NextDouble(); }
@@ -641,7 +683,7 @@ public class SystemScene
                           (keyboard.IsKeyDown(Keys.W) && _prevKeyboard.IsKeyUp(Keys.W));
                 bool enter = keyboard.IsKeyDown(Keys.Enter) && _prevKeyboard.IsKeyUp(Keys.Enter);
 
-                int spawnCount = 15;
+                int spawnCount = 24;
 
                 if (esc)
                 {
@@ -672,12 +714,16 @@ public class SystemScene
                     }
                     if (enter)
                     {
-                        if (_trainingSpawnSelection < 5)
-                            SpawnTrainingEnemy(_trainingSpawnSelection);
-                        else if (_trainingSpawnSelection < 10)
-                            SpawnTrainingStation("empire", _trainingSpawnSelection - 4);
+                        int enemyCount = 18;
+                        if (_trainingSpawnSelection < enemyCount)
+                        {
+                            bool isFed = _trainingSpawnSelection >= 9;
+                            SpawnTrainingEnemy(_trainingSpawnSelection % 9, isFed ? "Atlas Federation" : "");
+                        }
+                        else if (_trainingSpawnSelection < enemyCount + 5)
+                            SpawnTrainingStation("empire", _trainingSpawnSelection - (enemyCount - 1));
                         else
-                            SpawnTrainingStation("federation", _trainingSpawnSelection - 9);
+                            SpawnTrainingStation("federation", _trainingSpawnSelection - (enemyCount + 4));
                     }
                     _prevKeyboard = keyboard;
                     return;
@@ -918,7 +964,8 @@ public class SystemScene
                             Position = muzzlePos,
                             Velocity = Vector2.FromAngle(_player.Angle) * BULLET_SPEED + _player.Velocity * 0.5f,
                             Lifetime = BULLET_LIFETIME,
-                            IsPlayerBullet = true
+                            IsPlayerBullet = true,
+                            Damage = 1f
                         });
                     }
                 }
@@ -948,21 +995,7 @@ public class SystemScene
                             var e = _enemies[ei];
                             if (LineCircleIntersect(muzzlePos, beamEnd, e.Position, 16f))
                             {
-                                e.Health -= beamDmg;
-                                if (e.Health <= 0f)
-                                {
-                                    _enemyExplosions.Add(new EnemyExplosion
-                                    {
-                                        Position = e.Position,
-                                        Timer = 0f,
-                                        Duration = 0.6f
-                                    });
-                                    _enemies.RemoveAt(ei);
-                                }
-                                else
-                                {
-                                    _enemies[ei] = e;
-                                }
+                                DamageEnemy(ei, beamDmg, e.Position);
                             }
                         }
 
@@ -1055,8 +1088,8 @@ public class SystemScene
                 if (m.Lifetime <= 0f)
                     remove = true;
 
-                // Homing toward target
-                if (!remove && m.TargetIndex >= 0 && m.TargetIndex < _enemies.Count)
+                // Homing toward target (player missiles only)
+                if (!remove && !m.IsEnemyMissile && m.TargetIndex >= 0 && m.TargetIndex < _enemies.Count)
                 {
                     var target = _enemies[m.TargetIndex];
                     Vector2 toTarget = target.Position - m.Position;
@@ -1073,22 +1106,47 @@ public class SystemScene
                     // Check collision with target
                     if (homingDist < 20f)
                     {
-                        target.Health -= 5f;
-                        if (target.Health <= 0f)
-                        {
-                            _enemyExplosions.Add(new EnemyExplosion
-                            {
-                                Position = target.Position,
-                                Timer = 0f,
-                                Duration = 0.6f
-                            });
-                            _enemies.RemoveAt(m.TargetIndex);
-                        }
-                        else
-                        {
-                            _enemies[m.TargetIndex] = target;
-                        }
+                        DamageEnemy(m.TargetIndex, 5f, m.Position);
                         remove = true;
+                    }
+                }
+
+                // Enemy missile homing toward player
+                if (!remove && m.IsEnemyMissile)
+                {
+                    Vector2 toPlayer = _player.Position - m.Position;
+                    float homingDist = toPlayer.Length();
+                    if (homingDist > 1f)
+                    {
+                        Vector2 dir = toPlayer.Normalized();
+                        m.Velocity += dir * dt * 130f;
+                        float maxMSpeed = 250f;
+                        if (m.Velocity.Length() > maxMSpeed)
+                            m.Velocity = m.Velocity.Normalized() * maxMSpeed;
+                    }
+
+                    // Check collision with player
+                    if (!_trainingInvincible && homingDist < 22f)
+                    {
+                        _player.Health -= 5;
+                        _enemyExplosions.Add(new EnemyExplosion
+                        {
+                            Position = m.Position,
+                            Timer = 0f,
+                            Duration = 0.4f
+                        });
+                        remove = true;
+                    }
+
+                    // Check collision with friendly station in training mode
+                    if (!remove && TrainingMode && _trainingFriendlyHealth > 0)
+                    {
+                        Vector2 fPos = new(_trainingFriendlyStation.X, _trainingFriendlyStation.Y);
+                        if (Vector2.Distance(m.Position, fPos) < _trainingFriendlyStation.BodyRadius + 5f)
+                        {
+                            DamageFriendlyStation(5f);
+                            remove = true;
+                        }
                     }
                 }
 
@@ -1265,21 +1323,13 @@ public class SystemScene
                 for (int j = _enemies.Count - 1; j >= 0; j--)
                 {
                     var e = _enemies[j];
-                    if (Vector2.Distance(b.Position, e.Position) < 16f)
+                    float colRadius = 16f;
+                    if (e.Type == "battleship") colRadius = 40f;
+                    else if (e.Type == "destroyer") colRadius = 24f;
+                    else if (e.Type == "missile_frigate") colRadius = 20f;
+                    if (Vector2.Distance(b.Position, e.Position) < colRadius)
                     {
-                        e.Health -= 1f;
-                        if (e.Health <= 0f)
-                        {
-                            _enemyExplosions.Add(new EnemyExplosion
-                            {
-                                Position = e.Position,
-                                Timer = 0f,
-                                Duration = 0.6f
-                            });
-                            _enemies.RemoveAt(j);
-                        }
-                        else
-                            _enemies[j] = e;
+                        DamageEnemy(j, b.Damage > 0f ? b.Damage : 1f, b.Position);
                         hit = true;
                         break;
                     }
@@ -1361,7 +1411,7 @@ public class SystemScene
                 if (b.IsPlayerBullet) continue;
                 if (!_trainingInvincible && Vector2.Distance(b.Position, _player.Position) < 22f)
                 {
-                    _player.Health -= 2;
+                    _player.Health -= (int)(b.Damage > 0f ? b.Damage : 2f);
                     _bullets.RemoveAt(i);
                 }
             }
@@ -1983,16 +2033,7 @@ public class SystemScene
             float ex = center.X + (e.Position.X - _player.Position.X) * ZOOM;
             float ey = center.Y + (e.Position.Y - _player.Position.Y) * ZOOM;
             Vector2 ePos = new(ex, ey);
-            DrawShip(sb, pixel, ePos, t, 0.5f, new Color(255, 140, 0), e.Angle, e.Velocity);
-
-            // Health bar
-            float hpPct = e.Health / e.MaxHealth;
-            int barW = 24;
-            int barH = 3;
-            int barX = (int)ex - barW / 2;
-            int barY = (int)ey + 14;
-            sb.Draw(pixel, new Microsoft.Xna.Framework.Rectangle(barX, barY, barW, barH), new Color(40, 0, 0, 180));
-            sb.Draw(pixel, new Microsoft.Xna.Framework.Rectangle(barX, barY, (int)(barW * hpPct), barH), Color.Red);
+            DrawEnemyShip(sb, pixel, ePos, t, e);
         }
 
         // Asteroid loot
@@ -2378,15 +2419,23 @@ public class SystemScene
 
             // Build display list with section headers
             var lines = new List<(string text, bool isHeader, int? itemIndex)>();
-            lines.Add(("-- Enemy Ships --", true, null));
-            string[] enemyNames = { "Pirate Scout", "Raider Fighter", "Mercenary Gunship", "Syndicate Cruiser", "Void Dreadnought" };
-            for (int i = 0; i < enemyNames.Length; i++)
-                lines.Add((enemyNames[i], false, i));
+            lines.Add(("-- Trigor Empire Ships --", true, null));
+            string[] trigorNames = { "Pirate Scout", "Raider Fighter", "Mercenary Gunship", "Syndicate Cruiser", "Void Dreadnought",
+                                     "Interceptor", "Missile Frigate", "Destroyer", "Battleship" };
+            int trigorCount = trigorNames.Length;
+            for (int i = 0; i < trigorCount; i++)
+                lines.Add((trigorNames[i], false, i));
+            lines.Add(("-- Atlas Federation Ships --", true, null));
+            string[] fedNames = { "Fed. Scout", "Fed. Fighter", "Fed. Gunship", "Fed. Cruiser", "Fed. Dreadnought",
+                                  "Fed. Interceptor", "Fed. Missile Frigate", "Fed. Destroyer", "Fed. Battleship" };
+            for (int i = 0; i < fedNames.Length; i++)
+                lines.Add((fedNames[i], false, trigorCount + i));
+            int enemyCount = trigorCount + fedNames.Length;
             lines.Add(("-- Stations --", true, null));
             string[] stationNames = { "Empire Station L1", "Empire Station L2", "Empire Station L3", "Empire Station L4", "Empire Station L5",
                                       "Atlas Federation Station L1", "Atlas Federation Station L2", "Atlas Federation Station L3", "Atlas Federation Station L4", "Atlas Federation Station L5" };
             for (int i = 0; i < stationNames.Length; i++)
-                lines.Add((stationNames[i], false, 5 + i));
+                lines.Add((stationNames[i], false, enemyCount + i));
 
             float startY = hY + 50f;
             for (int i = 0; i < lines.Count; i++)
@@ -2632,6 +2681,283 @@ public class SystemScene
         DrawLine(sb, pixel, siL.X, siL.Y, lEnd.X, lEnd.Y, color * 0.35f);
         DrawLine(sb, pixel, siR.X, siR.Y, rEnd.X, rEnd.Y, color * 0.35f);
         DrawLine(sb, pixel, lEnd.X, lEnd.Y, rEnd.X, rEnd.Y, color * 0.35f);
+    }
+
+    private void DrawEnemyShip(SpriteBatch sb, Texture2D pixel, Vector2 pos, float t, EnemyShip e)
+    {
+        float baseScale;
+        Color color;
+        bool isFederation = e.Faction == "Atlas Federation";
+        switch (e.Type)
+        {
+            case "interceptor":
+                baseScale = 0.5f; color = isFederation ? new Color(200, 220, 255) : Color.White; break;
+            case "missile_frigate":
+                baseScale = 0.9f; color = isFederation ? new Color(120, 180, 240) : new Color(140, 140, 160); break;
+            case "destroyer":
+                baseScale = 1.3f; color = isFederation ? new Color(60, 120, 220) : new Color(100, 120, 180); break;
+            case "battleship":
+                baseScale = 2.0f; color = isFederation ? new Color(40, 80, 200) : new Color(160, 80, 60); break;
+            default:
+                baseScale = 0.5f; color = isFederation ? new Color(80, 160, 255) : new Color(255, 140, 0); break;
+        }
+        float scale = baseScale * ZOOM;
+        float len = 18f * scale;
+
+        Vector2 forward = Vector2.FromAngle(e.Angle);
+        Vector2 right = Vector2.FromAngle(e.Angle - 1.5708f);
+
+        if (e.Type == "battleship")
+        {
+            DrawBattleship(sb, pixel, pos, t, e, scale, len, forward, right, color);
+        }
+        else if (e.Type == "destroyer")
+        {
+            DrawDestroyer(sb, pixel, pos, t, e, scale, len, forward, right, color);
+        }
+        else if (e.Type == "missile_frigate")
+        {
+            DrawMissileFrigate(sb, pixel, pos, t, e, scale, len, forward, right, color);
+        }
+        else if (e.Type == "interceptor")
+        {
+            DrawShip(sb, pixel, pos, t, 0.5f, color, e.Angle, e.Velocity);
+        }
+        else
+        {
+            DrawShip(sb, pixel, pos, t, 0.5f, color, e.Angle, e.Velocity);
+        }
+
+        // Draw shields bar (if shielded)
+        if (e.MaxShields > 0f)
+        {
+            int barW = 24;
+            int barH = 2;
+            int barX = (int)pos.X - barW / 2;
+            int barY = (int)pos.Y - (int)(len * 1.1f) - 4;
+            float shieldPct = e.Shields / e.MaxShields;
+            Color bg = isFederation ? new Color(0, 20, 40, 180) : new Color(0, 0, 40, 180);
+            sb.Draw(pixel, new Microsoft.Xna.Framework.Rectangle(barX, barY, barW, barH), bg);
+            sb.Draw(pixel, new Microsoft.Xna.Framework.Rectangle(barX, barY, (int)(barW * shieldPct), barH), isFederation ? Color.LightBlue : Color.Cyan);
+        }
+
+        // Health bar
+        float hpPct = e.Health / e.MaxHealth;
+        if (e.Type == "battleship")
+        {
+            // Show combined health of all 3 sections
+            float totalMax = e.BattleshipFrontMaxHP + e.BattleshipMidMaxHP + e.BattleshipRearMaxHP;
+            float totalHP = Math.Max(0, e.BattleshipFrontHP) + Math.Max(0, e.BattleshipMidHP) + Math.Max(0, e.BattleshipRearHP);
+            hpPct = totalMax > 0 ? totalHP / totalMax : 0f;
+        }
+        int hpBarW = 24;
+        int hpBarH = 3;
+        int hpBarX = (int)pos.X - hpBarW / 2;
+        int hpBarY = (int)pos.Y + (int)(len * 0.8f) + 2;
+        Color hpBg = isFederation ? new Color(0, 20, 40, 180) : new Color(40, 0, 0, 180);
+        sb.Draw(pixel, new Microsoft.Xna.Framework.Rectangle(hpBarX, hpBarY, hpBarW, hpBarH), hpBg);
+        sb.Draw(pixel, new Microsoft.Xna.Framework.Rectangle(hpBarX, hpBarY, (int)(hpBarW * hpPct), hpBarH), isFederation ? Color.LightBlue : Color.Red);
+    }
+
+    private void DrawMissileFrigate(SpriteBatch sb, Texture2D pixel, Vector2 pos, float t,
+        EnemyShip e, float scale, float len, Vector2 forward, Vector2 right, Color color)
+    {
+        // Boxy hull — rectangle with angled front
+        float halfW = len * 0.45f;
+        float halfH = len * 0.35f;
+        var nose = pos + forward * halfW;
+        var rear = pos - forward * halfW;
+        var rTop = pos + right * halfH - forward * halfW * 0.3f;
+        var rBot = pos - right * halfH - forward * halfW * 0.3f;
+        var nTop = nose + right * halfH * 0.6f;
+        var nBot = nose - right * halfH * 0.6f;
+
+        // Hull outline
+        DrawLine(sb, pixel, nTop.X, nTop.Y, rTop.X, rTop.Y, color);
+        DrawLine(sb, pixel, nBot.X, nBot.Y, rBot.X, rBot.Y, color);
+        DrawLine(sb, pixel, nTop.X, nTop.Y, nBot.X, nBot.Y, color);
+        DrawLine(sb, pixel, rTop.X, rTop.Y, rBot.X, rBot.Y, color);
+        DrawLine(sb, pixel, nose.X, nose.Y, nTop.X, nTop.Y, color);
+        DrawLine(sb, pixel, nose.X, nose.Y, nBot.X, nBot.Y, color);
+
+        // Missile tubes on sides
+        float tubeLen = halfW * 0.7f;
+        float tubeW = 3f * ZOOM;
+        for (int side = -1; side <= 1; side += 2)
+        {
+            var tubeBase = pos + right * halfH * 0.8f * side - forward * halfW * 0.2f;
+            var tubeTip = tubeBase + forward * tubeLen;
+            DrawLine(sb, pixel, tubeBase.X, tubeBase.Y, tubeTip.X, tubeTip.Y, new Color(180, 180, 180));
+            var tSide = tubeBase + right * tubeW * 0.5f * side;
+            DrawLine(sb, pixel, tSide.X, tSide.Y, tSide.X + forward.X * tubeLen, tSide.Y + forward.Y * tubeLen, new Color(120, 120, 120));
+        }
+
+        // Cockpit
+        var cockpit = pos + forward * halfW * 0.2f;
+        float cs = 2f * ZOOM;
+        var cf = cockpit + forward * cs;
+        var cl = cockpit + right * cs * 0.4f;
+        var cr = cockpit - right * cs * 0.4f;
+        DrawLine(sb, pixel, cf.X, cf.Y, cl.X, cl.Y, Color.Cyan * 0.5f);
+        DrawLine(sb, pixel, cf.X, cf.Y, cr.X, cr.Y, Color.Cyan * 0.5f);
+
+        // Thrust
+        float speed = e.Velocity.Length();
+        if (speed > 10f)
+        {
+            float flameBase = MathF.Min(speed / 5f, 10f) * ZOOM;
+            var fOrigin = rear;
+            var fTip = fOrigin - forward * flameBase;
+            var fSide1 = fOrigin - forward * flameBase * 0.3f + right * 3f * ZOOM;
+            var fSide2 = fOrigin - forward * flameBase * 0.3f - right * 3f * ZOOM;
+            DrawLine(sb, pixel, fTip.X, fTip.Y, fSide1.X, fSide1.Y, Color.Orange * 0.7f);
+            DrawLine(sb, pixel, fTip.X, fTip.Y, fSide2.X, fSide2.Y, Color.Orange * 0.7f);
+        }
+    }
+
+    private void DrawDestroyer(SpriteBatch sb, Texture2D pixel, Vector2 pos, float t,
+        EnemyShip e, float scale, float len, Vector2 forward, Vector2 right, Color color)
+    {
+        // Longer, rounded hull
+        float halfW = len * 0.5f;
+        float halfH = len * 0.25f;
+        var nose = pos + forward * halfW;
+        var rear = pos - forward * halfW;
+        var rTop = pos + right * halfH - forward * halfW * 0.1f;
+        var rBot = pos - right * halfH - forward * halfW * 0.1f;
+        var nTop = nose - right * halfH * 0.1f;
+        var nBot = nose + right * halfH * 0.1f;
+
+        // Hull — tapered oval shape
+        DrawLine(sb, pixel, nTop.X, nTop.Y, rTop.X, rTop.Y, color);
+        DrawLine(sb, pixel, nBot.X, nBot.Y, rBot.X, rBot.Y, color);
+        DrawLine(sb, pixel, nTop.X, nTop.Y, nBot.X, nBot.Y, color);
+        DrawLine(sb, pixel, rTop.X, rTop.Y, rBot.X, rBot.Y, color);
+        // Rounded nose
+        DrawLine(sb, pixel, nose.X, nose.Y, nTop.X, nTop.Y, color);
+        DrawLine(sb, pixel, nose.X, nose.Y, nBot.X, nBot.Y, color);
+        // Rear
+        DrawLine(sb, pixel, rTop.X, rTop.Y, rear.X, rear.Y, color * 0.6f);
+        DrawLine(sb, pixel, rBot.X, rBot.Y, rear.X, rear.Y, color * 0.6f);
+        DrawLine(sb, pixel, rear.X, rear.Y, rear.X + right.X * halfH, rear.Y + right.Y * halfH, color * 0.4f);
+
+        // Front turret
+        float turretSize = 4f * ZOOM;
+        var t1Pos = pos + forward * halfW * 0.4f;
+        DrawLine(sb, pixel, t1Pos.X - right.X * turretSize, t1Pos.Y - right.Y * turretSize,
+            t1Pos.X + right.X * turretSize, t1Pos.Y + right.Y * turretSize, Color.Gray);
+        DrawLine(sb, pixel, t1Pos.X - forward.X * turretSize * 0.3f, t1Pos.Y - forward.Y * turretSize * 0.3f,
+            t1Pos.X + forward.X * turretSize * 0.3f, t1Pos.Y + forward.Y * turretSize * 0.3f, Color.Gray);
+
+        // Rear turret
+        var t2Pos = pos - forward * halfW * 0.4f;
+        DrawLine(sb, pixel, t2Pos.X - right.X * turretSize, t2Pos.Y - right.Y * turretSize,
+            t2Pos.X + right.X * turretSize, t2Pos.Y + right.Y * turretSize, Color.Gray);
+        DrawLine(sb, pixel, t2Pos.X - forward.X * turretSize * 0.3f, t2Pos.Y - forward.Y * turretSize * 0.3f,
+            t2Pos.X + forward.X * turretSize * 0.3f, t2Pos.Y + forward.Y * turretSize * 0.3f, Color.Gray);
+
+        // Missile tube in front
+        var mTube = nose - forward * 3f * ZOOM;
+        DrawLine(sb, pixel, mTube.X - right.X * 2f * ZOOM, mTube.Y - right.Y * 2f * ZOOM,
+            mTube.X + right.X * 2f * ZOOM, mTube.Y + right.Y * 2f * ZOOM, new Color(120, 120, 120));
+
+        // Cockpit
+        var cockpit = pos + forward * halfW * 0.1f;
+        float cs = 2f * ZOOM;
+        var cf = cockpit + forward * cs;
+        var cl = cockpit + right * cs * 0.5f;
+        var cr = cockpit - right * cs * 0.5f;
+        DrawLine(sb, pixel, cf.X, cf.Y, cl.X, cl.Y, Color.Cyan * 0.4f);
+        DrawLine(sb, pixel, cf.X, cf.Y, cr.X, cr.Y, Color.Cyan * 0.4f);
+
+        // Thrust
+        float speed = e.Velocity.Length();
+        if (speed > 10f)
+        {
+            float flameBase = MathF.Min(speed / 4f, 10f) * ZOOM;
+            var fOrigin = rear;
+            var fTip = fOrigin - forward * flameBase;
+            var fSide1 = fOrigin - forward * flameBase * 0.3f + right * 4f * ZOOM;
+            var fSide2 = fOrigin - forward * flameBase * 0.3f - right * 4f * ZOOM;
+            DrawLine(sb, pixel, fTip.X, fTip.Y, fSide1.X, fSide1.Y, Color.Orange * 0.6f);
+            DrawLine(sb, pixel, fTip.X, fTip.Y, fSide2.X, fSide2.Y, Color.Orange * 0.6f);
+        }
+    }
+
+    private void DrawBattleship(SpriteBatch sb, Texture2D pixel, Vector2 pos, float t,
+        EnemyShip e, float scale, float len, Vector2 forward, Vector2 right, Color color)
+    {
+        // 3 sections: rear, mid, front — each separated by a small gap
+        float sectionLen = len * 0.55f;
+        float gap = 3f * ZOOM;
+        float halfH = len * 0.2f;
+
+        // Rear section
+        if (e.BattleshipRearHP > 0f)
+        {
+            Vector2 rearPos = pos - forward * (sectionLen + gap * 0.5f);
+            DrawBattleshipSection(sb, pixel, rearPos, forward, right, sectionLen, halfH, color, e.BattleshipRearHP > 0f);
+        }
+
+        // Mid section
+        if (e.BattleshipMidHP > 0f)
+        {
+            Vector2 midPos = pos;
+            DrawBattleshipSection(sb, pixel, midPos, forward, right, sectionLen, halfH, color, e.BattleshipMidHP > 0f);
+            // Gun turrets on mid section
+            float turretSize = 3f * ZOOM;
+            var t1Pos = midPos + right * halfH * 0.6f;
+            var t2Pos = midPos - right * halfH * 0.6f;
+            var t3Pos = midPos + forward * sectionLen * 0.3f;
+            FillCircle(sb, pixel, t1Pos.X, t1Pos.Y, turretSize, Color.Gray * 0.8f);
+            FillCircle(sb, pixel, t2Pos.X, t2Pos.Y, turretSize, Color.Gray * 0.8f);
+            FillCircle(sb, pixel, t3Pos.X, t3Pos.Y, turretSize * 0.6f, Color.Gray * 0.6f);
+        }
+
+        // Front section
+        if (e.BattleshipFrontHP > 0f)
+        {
+            Vector2 frontPos = pos + forward * (sectionLen + gap * 0.5f);
+            DrawBattleshipSection(sb, pixel, frontPos, forward, right, sectionLen, halfH, color, e.BattleshipFrontHP > 0f);
+            // Rounded nose extension
+            Vector2 nose = frontPos + forward * sectionLen * 0.5f;
+            Vector2 nMid = frontPos + forward * sectionLen * 0.35f;
+            DrawLine(sb, pixel, nMid.X - right.X * halfH * 0.5f, nMid.Y - right.Y * halfH * 0.5f,
+                nose.X, nose.Y, color);
+            DrawLine(sb, pixel, nMid.X + right.X * halfH * 0.5f, nMid.Y + right.Y * halfH * 0.5f,
+                nose.X, nose.Y, color);
+        }
+
+        // Thrust (rear section only)
+        if (!e.MovementDisabled && e.Velocity.Length() > 10f)
+        {
+            Vector2 rearEnd = pos - forward * (sectionLen * 1.5f + gap);
+            float flameBase = MathF.Min(e.Velocity.Length() / 4f, 12f) * ZOOM;
+            var fTip = rearEnd - forward * flameBase;
+            var fSide1 = rearEnd - forward * flameBase * 0.3f + right * 5f * ZOOM;
+            var fSide2 = rearEnd - forward * flameBase * 0.3f - right * 5f * ZOOM;
+            DrawLine(sb, pixel, fTip.X, fTip.Y, fSide1.X, fSide1.Y, Color.Orange * 0.5f);
+            DrawLine(sb, pixel, fTip.X, fTip.Y, fSide2.X, fSide2.Y, Color.Orange * 0.5f);
+        }
+    }
+
+    private void DrawBattleshipSection(SpriteBatch sb, Texture2D pixel, Vector2 center,
+        Vector2 forward, Vector2 right, float sLen, float halfH, Color color, bool active)
+    {
+        Color c = active ? color : color * 0.3f;
+        Vector2 fwd = center + forward * sLen * 0.5f;
+        Vector2 aft = center - forward * sLen * 0.5f;
+        Vector2 fwdT = fwd + right * halfH;
+        Vector2 fwdB = fwd - right * halfH;
+        Vector2 aftT = aft + right * halfH;
+        Vector2 aftB = aft - right * halfH;
+
+        DrawLine(sb, pixel, fwdT.X, fwdT.Y, aftT.X, aftT.Y, c);
+        DrawLine(sb, pixel, fwdB.X, fwdB.Y, aftB.X, aftB.Y, c);
+        DrawLine(sb, pixel, fwdT.X, fwdT.Y, fwdB.X, fwdB.Y, c);
+        DrawLine(sb, pixel, aftT.X, aftT.Y, aftB.X, aftB.Y, c);
+        // Centerline
+        DrawLine(sb, pixel, fwd.X, fwd.Y, aft.X, aft.Y, c * 0.4f);
     }
 
     private void DrawDockedMenu(SpriteBatch sb, Texture2D pixel, SpriteFont font, SpriteFont titleFont,
@@ -3688,40 +4014,191 @@ public class SystemScene
         }
     }
 
-    private void SpawnTrainingEnemy(int typeIndex)
+    private EnemyShip MakeEnemyShip(string type, Vector2 pos, Vector2 vel, float angle, AiState aiState, float stateTimer, float orbitAngle, string faction = "")
     {
-        float health;
-        float shootCooldown;
-        string typeName;
-
-        switch (typeIndex)
+        float hp = 3f, shields = 0f, wepDmg = 2f, cd = 2f;
+        float bFront = 0f, bMid = 0f, bRear = 0f;
+        bool hasMissiles = false;
+        switch (type)
         {
-            case 0: health = 3f; shootCooldown = 2.0f; typeName = "scout"; break;
-            case 1: health = 5f; shootCooldown = 1.5f; typeName = "fighter"; break;
-            case 2: health = 8f; shootCooldown = 1.2f; typeName = "gunship"; break;
-            case 3: health = 15f; shootCooldown = 1.0f; typeName = "cruiser"; break;
-            case 4: health = 25f; shootCooldown = 0.8f; typeName = "dreadnought"; break;
-            default: return;
+            case "scout":         hp = 3f; cd = 2.0f; break;
+            case "fighter":       hp = 5f; cd = 1.5f; break;
+            case "gunship":       hp = 8f; cd = 1.2f; break;
+            case "cruiser":       hp = 15f; cd = 1.0f; break;
+            case "dreadnought":   hp = 25f; cd = 0.8f; break;
+            case "interceptor":   hp = 3f; shields = 3f; wepDmg = 4f; cd = 2.0f; break;
+            case "missile_frigate": hp = 10f; shields = 5f; cd = 2.5f; hasMissiles = true; break;
+            case "destroyer":     hp = 20f; shields = 8f; cd = 2.0f; hasMissiles = true; break;
+            case "battleship":    hp = 30f; shields = 15f; cd = 3.0f; bFront = 30f; bMid = 20f; bRear = 15f; hasMissiles = true; break;
         }
+        var ship = new EnemyShip
+        {
+            Position = pos, Velocity = vel, Angle = angle,
+            Health = hp, MaxHealth = hp,
+            Shields = shields, MaxShields = shields,
+            WeaponDamage = wepDmg,
+            Type = type, ShootCooldown = cd,
+            AiState = aiState, StateTimer = stateTimer, OrbitAngle = orbitAngle,
+            BattleshipFrontHP = bFront, BattleshipFrontMaxHP = bFront,
+            BattleshipMidHP = bMid, BattleshipMidMaxHP = bMid,
+            BattleshipRearHP = bRear, BattleshipRearMaxHP = bRear,
+            MovementDisabled = false, WeaponsDisabled = false,
+            Faction = faction
+        };
+        if (hasMissiles)
+        {
+            ship.MissileCooldown1 = 1f + RandF() * 2f;
+            ship.MissileCooldown2 = 3f + RandF() * 2f;
+        }
+        return ship;
+    }
+
+    private void SpawnTrainingEnemy(int typeIndex, string faction = "")
+    {
+        string[] typeNames = { "scout", "fighter", "gunship", "cruiser", "dreadnought",
+                               "interceptor", "missile_frigate", "destroyer", "battleship" };
+        if (typeIndex < 0 || typeIndex >= typeNames.Length) return;
 
         float spawnAngle = RandF() * MathF.Tau;
         float spawnDist = 300f + RandF() * 200f;
         Vector2 pos = _player.Position + Vector2.FromAngle(spawnAngle) * spawnDist;
         float a = RandF() * MathF.Tau;
 
-        _enemies.Add(new EnemyShip
+        _enemies.Add(MakeEnemyShip(typeNames[typeIndex], pos,
+            Vector2.FromAngle(a) * (80f + RandF() * 70f), a,
+            AiState.Attack, 0f, spawnAngle, faction));
+    }
+
+    private int GetHopDistance(string fromId, string toId)
+    {
+        if (fromId == toId) return 0;
+        var visited = new HashSet<string> { fromId };
+        var queue = new Queue<(string id, int dist)>();
+        queue.Enqueue((fromId, 0));
+        while (queue.Count > 0)
         {
-            Position = pos,
-            Velocity = Vector2.FromAngle(a) * (80f + RandF() * 70f),
-            Angle = a,
-            Health = health,
-            MaxHealth = health,
-            Type = typeName,
-            ShootCooldown = shootCooldown,
-            AiState = AiState.Attack,
-            StateTimer = 0f,
-            OrbitAngle = spawnAngle
-        });
+            var (cur, dist) = queue.Dequeue();
+            var sys = _game?.Galaxy?.FindSystemById(cur);
+            if (sys == null) continue;
+            foreach (var conn in sys.Connections)
+            {
+                if (conn == toId) return dist + 1;
+                if (visited.Add(conn))
+                    queue.Enqueue((conn, dist + 1));
+            }
+        }
+        return 99;
+    }
+
+    private void SpawnFederationPatrols()
+    {
+        if (_game?.Galaxy == null || TrainingMode) return;
+
+        // Determine hop distance from Atlas
+        int distFromAtlas = GetHopDistance("atlas", _system.Id);
+        int count;
+        if (_system.Id == "atlas")
+        {
+            // Atlas defense fleet: heavy presence
+            count = 6 + Random.Shared.Next(3);
+        }
+        else if (distFromAtlas <= 1)
+            count = 3 + Random.Shared.Next(2);
+        else if (distFromAtlas <= 3)
+            count = 2 + Random.Shared.Next(2);
+        else if (distFromAtlas <= 5)
+            count = 1 + Random.Shared.Next(1);
+        else
+            return; // too far from Atlas, no patrols
+
+        string[] typePool;
+        if (_system.Id == "atlas")
+            typePool = new[] { "battleship", "destroyer", "destroyer", "missile_frigate", "cruiser", "gunship", "interceptor", "interceptor", "fighter" };
+        else if (distFromAtlas <= 1)
+            typePool = new[] { "destroyer", "missile_frigate", "gunship", "interceptor", "fighter", "fighter" };
+        else if (distFromAtlas <= 3)
+            typePool = new[] { "missile_frigate", "gunship", "interceptor", "fighter", "scout" };
+        else
+            typePool = new[] { "gunship", "interceptor", "fighter", "scout" };
+
+        for (int i = 0; i < count; i++)
+        {
+            float spawnAngle = RandF() * MathF.Tau;
+            float spawnDist = 250f + RandF() * 350f;
+            Vector2 pos = _player.Position + Vector2.FromAngle(spawnAngle) * spawnDist;
+            float a = RandF() * MathF.Tau;
+            string type = typePool[Random.Shared.Next(typePool.Length)];
+            _enemies.Add(MakeEnemyShip(type, pos,
+                Vector2.FromAngle(a) * (60f + RandF() * 60f), a,
+                AiState.Orbit, RandF() * 2f, spawnAngle, "Atlas Federation"));
+        }
+    }
+
+    private void SpawnEmpireScouts()
+    {
+        if (_game?.Galaxy == null || TrainingMode) return;
+        if (_system.Faction == "Trigor Empire") return;
+        if (_system.Hostility >= 3) return;
+
+        int distFromEmpire = GetHopDistance("trigor", _system.Id);
+        if (distFromEmpire > 2) return;
+
+        // Spawn 1-3 scouts in systems within 2 hops of Empire
+        int count = 1 + Random.Shared.Next(3);
+        for (int i = 0; i < count; i++)
+        {
+            float spawnAngle = RandF() * MathF.Tau;
+            float spawnDist = 300f + RandF() * 200f;
+            Vector2 pos = _player.Position + Vector2.FromAngle(spawnAngle) * spawnDist;
+            float a = RandF() * MathF.Tau;
+            string type = Random.Shared.NextDouble() < 0.3f ? "interceptor" : "scout";
+            _enemies.Add(MakeEnemyShip(type, pos,
+                Vector2.FromAngle(a) * (100f + RandF() * 50f), a,
+                AiState.Idle, RandF() * 3f, spawnAngle, ""));
+        }
+
+        // Notify the player
+        string sysName = _system.Name;
+        _game?.SetStatusMessage($"Enemy Forces Spotted in {sysName}!", 4f);
+    }
+
+    private void SpawnEmpirePatrols()
+    {
+        if (_game?.Galaxy == null || TrainingMode) return;
+        if (_system.Faction != "Trigor Empire" && _system.Hostility < 3) return;
+
+        int distFromTrigor = GetHopDistance("trigor", _system.Id);
+        int count;
+        if (distFromTrigor <= 0)
+            count = 5 + Random.Shared.Next(3); // Trigor itself
+        else if (distFromTrigor <= 1)
+            count = 3 + Random.Shared.Next(2);
+        else if (distFromTrigor <= 2)
+            count = 2 + Random.Shared.Next(2);
+        else
+            count = 1 + Random.Shared.Next(2);
+
+        string[] typePool;
+        if (distFromTrigor <= 0)
+            typePool = new[] { "battleship", "destroyer", "destroyer", "missile_frigate", "cruiser", "gunship", "interceptor", "fighter", "scout" };
+        else if (distFromTrigor <= 1)
+            typePool = new[] { "destroyer", "missile_frigate", "cruiser", "gunship", "interceptor", "fighter", "scout" };
+        else if (distFromTrigor <= 2)
+            typePool = new[] { "cruiser", "gunship", "interceptor", "fighter", "scout" };
+        else
+            typePool = new[] { "gunship", "interceptor", "fighter", "scout" };
+
+        for (int i = 0; i < count; i++)
+        {
+            float spawnAngle = RandF() * MathF.Tau;
+            float spawnDist = 200f + RandF() * 400f;
+            Vector2 pos = _player.Position + Vector2.FromAngle(spawnAngle) * spawnDist;
+            float a = RandF() * MathF.Tau;
+            string type = typePool[Random.Shared.Next(typePool.Length)];
+            _enemies.Add(MakeEnemyShip(type, pos,
+                Vector2.FromAngle(a) * (80f + RandF() * 70f), a,
+                AiState.Orbit, RandF() * 2f, spawnAngle, ""));
+        }
     }
 
     private void SpawnScouts()
@@ -3741,36 +4218,47 @@ public class SystemScene
             float spawnDist = 300f + RandF() * 300f;
             Vector2 pos = origin + Vector2.FromAngle(spawnAngle) * spawnDist;
             float a = RandF() * MathF.Tau;
-            _enemies.Add(new EnemyShip
-            {
-                Position = pos,
-                Velocity = Vector2.FromAngle(a) * (100f + RandF() * 50f),
-                Angle = a,
-                Health = 3f,
-                MaxHealth = 3f,
-                Type = "scout",
-                ShootCooldown = RandF() * 2f,
-                AiState = startState,
-                StateTimer = RandF() * 2f,
-                OrbitAngle = spawnAngle
-            });
+            _enemies.Add(MakeEnemyShip("scout", pos,
+                Vector2.FromAngle(a) * (100f + RandF() * 50f), a,
+                startState, RandF() * 2f, spawnAngle));
         }
     }
 
     private void SpawnHostileEnemies()
     {
+        bool isFederation = _system?.Faction == "Atlas Federation";
         int count = 3;
-        var trigorSys = _game?.Galaxy?.FindSystemById("trigor");
-        if (trigorSys != null)
+        float variety = 0f; // 0 = only scouts, 1 = full mix
+        if (!isFederation)
         {
-            float dx = _system.X - trigorSys.X;
-            float dy = _system.Y - trigorSys.Y;
-            float dist = MathF.Sqrt(dx * dx + dy * dy);
-            float maxDist = 15000f;
-            float t = MathF.Max(0f, MathF.Min(1f, dist / maxDist));
-            // t=0 (at trigor) → count=9, t=1 (far) → count=3
-            count = 3 + (int)((1f - t) * 6f);
+            var trigorSys = _game?.Galaxy?.FindSystemById("trigor");
+            if (trigorSys != null)
+            {
+                float dx = _system.X - trigorSys.X;
+                float dy = _system.Y - trigorSys.Y;
+                float dist = MathF.Sqrt(dx * dx + dy * dy);
+                float maxDist = 15000f;
+                float t = MathF.Max(0f, MathF.Min(1f, dist / maxDist));
+                count = 3 + (int)((1f - t) * 6f);
+                variety = 1f - t;
+            }
         }
+        else
+        {
+            count = 4 + Random.Shared.Next(3);
+            variety = 0.8f;
+        }
+
+        string faction = isFederation ? "Atlas Federation" : "";
+        string[] typePool;
+        if (isFederation)
+            typePool = new[] { "scout", "fighter", "gunship", "interceptor", "missile_frigate", "destroyer", "battleship" };
+        else if (variety > 0.7f)
+            typePool = new[] { "scout", "fighter", "gunship", "interceptor", "missile_frigate", "destroyer" };
+        else if (variety > 0.4f)
+            typePool = new[] { "scout", "fighter", "gunship", "interceptor" };
+        else
+            typePool = new[] { "scout", "fighter" };
 
         for (int i = 0; i < count; i++)
         {
@@ -3778,19 +4266,96 @@ public class SystemScene
             float spawnDist = 200f + RandF() * 400f;
             Vector2 pos = _player.Position + Vector2.FromAngle(spawnAngle) * spawnDist;
             float a = RandF() * MathF.Tau;
-            _enemies.Add(new EnemyShip
+            string type = typePool[Random.Shared.Next(typePool.Length)];
+            _enemies.Add(MakeEnemyShip(type, pos,
+                Vector2.FromAngle(a) * (80f + RandF() * 70f), a,
+                AiState.Attack, 0f, spawnAngle, faction));
+        }
+    }
+
+    private void DamageEnemy(int index, float damage, Vector2 hitPos)
+    {
+        if (index < 0 || index >= _enemies.Count) return;
+        var e = _enemies[index];
+
+        if (e.Type == "battleship")
+        {
+            // Determine which section was hit based on hit position relative to ship angle
+            Vector2 forward = Vector2.FromAngle(e.Angle);
+            Vector2 toHit = hitPos - e.Position;
+            float along = toHit.X * forward.X + toHit.Y * forward.Y;
+            float sectionLen = 18f * 2f * 0.55f; // battleship scale * section proportion
+
+            if (along > sectionLen * 0.3f)
             {
-                Position = pos,
-                Velocity = Vector2.FromAngle(a) * (80f + RandF() * 70f),
-                Angle = a,
-                Health = 3f,
-                MaxHealth = 3f,
-                Type = "scout",
-                ShootCooldown = RandF() * 2f,
-                AiState = AiState.Attack,
-                StateTimer = 0f,
-                OrbitAngle = spawnAngle
-            });
+                // Front section
+                if (e.BattleshipFrontHP > 0f)
+                {
+                    e.BattleshipFrontHP -= damage;
+                    if (e.BattleshipFrontHP <= 0f)
+                    {
+                        // Front destroyed = whole ship blows up
+                        _enemyExplosions.Add(new EnemyExplosion { Position = e.Position, Timer = 0f, Duration = 0.8f });
+                        _enemies.RemoveAt(index);
+                        return;
+                    }
+                }
+            }
+            else if (along < -sectionLen * 0.3f)
+            {
+                // Rear section
+                if (e.BattleshipRearHP > 0f)
+                {
+                    e.BattleshipRearHP -= damage;
+                    if (e.BattleshipRearHP <= 0f)
+                    {
+                        e.MovementDisabled = true;
+                        e.BattleshipRearHP = 0f;
+                    }
+                }
+            }
+            else
+            {
+                // Mid section
+                if (e.BattleshipMidHP > 0f)
+                {
+                    e.BattleshipMidHP -= damage;
+                    if (e.BattleshipMidHP <= 0f)
+                    {
+                        e.WeaponsDisabled = true;
+                        e.BattleshipMidHP = 0f;
+                    }
+                }
+            }
+            _enemies[index] = e;
+            return;
+        }
+
+        // Shield absorption
+        if (e.MaxShields > 0f && e.Shields > 0f)
+        {
+            e.Shields -= damage;
+            if (e.Shields < 0f)
+            {
+                // Overflow damage goes to HP
+                e.Health += e.Shields; // e.Shields is now negative
+                e.Shields = 0f;
+            }
+        }
+        else
+        {
+            e.Health -= damage;
+        }
+
+        // Check for destruction
+        if (e.Health <= 0f)
+        {
+            _enemyExplosions.Add(new EnemyExplosion { Position = e.Position, Timer = 0f, Duration = 0.6f });
+            _enemies.RemoveAt(index);
+        }
+        else
+        {
+            _enemies[index] = e;
         }
     }
 
@@ -3804,8 +4369,55 @@ public class SystemScene
 
         e.StateTimer -= dt;
         e.ShootCooldown -= dt;
+        e.TurretCooldown1 -= dt;
+        e.TurretCooldown2 -= dt;
+        e.TurretCooldown3 -= dt;
+        e.MissileCooldown1 -= dt;
+        e.MissileCooldown2 -= dt;
 
+        // Type-specific speed and behavior
         float maxSpeed = 112f;
+        float acceleration = 250f;
+        float orbitRadius = 150f;
+        float engageRange = 350f;
+
+        if (e.Type == "interceptor")
+        {
+            maxSpeed = 140f;
+            acceleration = 300f;
+        }
+        else if (e.Type == "missile_frigate")
+        {
+            maxSpeed = 70f;
+            acceleration = 120f;
+            orbitRadius = 200f;
+            engageRange = 400f;
+        }
+        else if (e.Type == "destroyer")
+        {
+            maxSpeed = 60f;
+            acceleration = 100f;
+            orbitRadius = 180f;
+            engageRange = 380f;
+        }
+        else if (e.Type == "battleship")
+        {
+            maxSpeed = 40f;
+            acceleration = 60f;
+            orbitRadius = 250f;
+            engageRange = 450f;
+        }
+
+        // Battleship: movement disabled if rear section destroyed
+        if (e.MovementDisabled)
+        {
+            e.Velocity *= 0.98f;
+            if (e.Velocity.Length() < 5f)
+                e.Velocity = Vector2.Zero;
+        }
+
+        // Friendly Federation ships in non-hostile systems don't attack the player
+        bool isFriendlyFed = e.Faction == "Atlas Federation" && _system != null && _system.Hostility < 3;
 
         switch (e.AiState)
         {
@@ -3816,12 +4428,14 @@ public class SystemScene
                     e.Angle = RandF() * MathF.Tau;
                     e.StateTimer = 1.5f + RandF() * 2f;
                 }
-                e.Velocity += Vector2.FromAngle(e.Angle) * dt * 100f;
+                if (!e.MovementDisabled)
+                    e.Velocity += Vector2.FromAngle(e.Angle) * dt * acceleration * 0.4f;
                 if (e.Velocity.Length() > maxSpeed * 0.7f)
                     e.Velocity = e.Velocity.Normalized() * maxSpeed * 0.7f;
-                e.Angle = MathF.Atan2(e.Velocity.Y, e.Velocity.X);
+                if (e.Velocity.Length() > 10f)
+                    e.Angle = MathF.Atan2(e.Velocity.Y, e.Velocity.X);
 
-                if (distToPlayer < 500f)
+                if (!isFriendlyFed && distToPlayer < 500f)
                 {
                     e.AiState = AiState.Orbit;
                     e.OrbitAngle = MathF.Atan2(
@@ -3834,13 +4448,13 @@ public class SystemScene
             case AiState.Orbit:
             {
                 e.OrbitAngle += dt * 0.5f;
-                float targetDist = 150f + RandF() * 80f;
+                float targetDist = orbitRadius + RandF() * 50f;
                 Vector2 orbitTarget = targetPos + Vector2.FromAngle(e.OrbitAngle) * targetDist;
                 Vector2 toOrbitTarget = orbitTarget - e.Position;
                 float tDist = toOrbitTarget.Length();
-                if (tDist > 10f)
+                if (tDist > 10f && !e.MovementDisabled)
                 {
-                    e.Velocity += toOrbitTarget.Normalized() * dt * 200f;
+                    e.Velocity += toOrbitTarget.Normalized() * dt * acceleration * 0.8f;
                     if (e.Velocity.Length() > maxSpeed)
                         e.Velocity = e.Velocity.Normalized() * maxSpeed;
                 }
@@ -3851,7 +4465,7 @@ public class SystemScene
                 if (e.Velocity.Length() > 10f)
                     e.Angle = MathF.Atan2(e.Velocity.Y, e.Velocity.X);
 
-                if (distToPlayer < 400f && e.StateTimer <= 0f)
+                if (!isFriendlyFed && distToPlayer < engageRange + 50f && e.StateTimer <= 0f)
                 {
                     e.AiState = AiState.Attack;
                     e.StateTimer = 1.5f + RandF() * 1.5f;
@@ -3860,13 +4474,19 @@ public class SystemScene
             }
             case AiState.Attack:
             {
-                e.Velocity += dirToPlayer * dt * 250f;
-                if (e.Velocity.Length() > maxSpeed * 1.2f)
-                    e.Velocity = e.Velocity.Normalized() * maxSpeed * 1.2f;
+                if (!e.MovementDisabled)
+                {
+                    e.Velocity += dirToPlayer * dt * acceleration;
+                    if (e.Velocity.Length() > maxSpeed * 1.2f)
+                        e.Velocity = e.Velocity.Normalized() * maxSpeed * 1.2f;
+                }
                 if (e.Velocity.Length() > 10f)
                     e.Angle = MathF.Atan2(e.Velocity.Y, e.Velocity.X);
 
-                if (distToPlayer < 350f && e.ShootCooldown <= 0f)
+                bool weaponsOk = !e.WeaponsDisabled;
+
+                // Primary gun fire
+                if (weaponsOk && distToPlayer < engageRange && e.ShootCooldown <= 0f)
                 {
                     e.ShootCooldown = 1.5f + RandF() * 0.5f;
                     Vector2 bulletVel = Vector2.FromAngle(e.Angle) * BULLET_SPEED * 0.8f + e.Velocity * 0.3f;
@@ -3875,8 +4495,104 @@ public class SystemScene
                         Position = e.Position,
                         Velocity = bulletVel,
                         Lifetime = BULLET_LIFETIME * 0.8f,
-                        IsPlayerBullet = false
+                        IsPlayerBullet = false,
+                        Damage = e.WeaponDamage
                     });
+                }
+
+                // Destroyer: front + rear turrets
+                if (e.Type == "destroyer" && weaponsOk && distToPlayer < engageRange + 30f)
+                {
+                    // Front turret
+                    if (e.TurretCooldown1 <= 0f)
+                    {
+                        e.TurretCooldown1 = 0.6f;
+                        Vector2 fwd = Vector2.FromAngle(e.Angle);
+                        Vector2 muzzle = e.Position + fwd * 18f * 1.3f * 0.4f;
+                        Vector2 bv = fwd * BULLET_SPEED * 0.8f + e.Velocity * 0.3f;
+                        _bullets.Add(new Bullet { Position = muzzle, Velocity = bv, Lifetime = BULLET_LIFETIME * 0.8f, IsPlayerBullet = false, Damage = e.WeaponDamage });
+                    }
+                    // Rear turret
+                    if (e.TurretCooldown2 <= 0f)
+                    {
+                        e.TurretCooldown2 = 0.6f;
+                        Vector2 rev = Vector2.FromAngle(e.Angle + MathF.PI);
+                        Vector2 muzzle = e.Position + rev * 18f * 1.3f * 0.4f;
+                        Vector2 bv = rev * BULLET_SPEED * 0.8f + e.Velocity * 0.3f;
+                        _bullets.Add(new Bullet { Position = muzzle, Velocity = bv, Lifetime = BULLET_LIFETIME * 0.8f, IsPlayerBullet = false, Damage = e.WeaponDamage });
+                    }
+                }
+
+                // Battleship: 3 gun turrets
+                if (e.Type == "battleship" && weaponsOk && distToPlayer < engageRange + 50f)
+                {
+                    float fwdAngle = e.Angle;
+                    // Turret 1: forward-left
+                    if (e.TurretCooldown1 <= 0f)
+                    {
+                        e.TurretCooldown1 = 0.5f;
+                        Vector2 dir = Vector2.FromAngle(fwdAngle - 0.3f);
+                        Vector2 muzzle = e.Position + dir * 18f * 2f * 0.5f;
+                        _bullets.Add(new Bullet { Position = muzzle, Velocity = dir * BULLET_SPEED * 0.8f + e.Velocity * 0.3f, Lifetime = BULLET_LIFETIME * 0.8f, IsPlayerBullet = false, Damage = e.WeaponDamage });
+                    }
+                    // Turret 2: forward-right
+                    if (e.TurretCooldown2 <= 0f)
+                    {
+                        e.TurretCooldown2 = 0.5f;
+                        Vector2 dir = Vector2.FromAngle(fwdAngle + 0.3f);
+                        Vector2 muzzle = e.Position + dir * 18f * 2f * 0.5f;
+                        _bullets.Add(new Bullet { Position = muzzle, Velocity = dir * BULLET_SPEED * 0.8f + e.Velocity * 0.3f, Lifetime = BULLET_LIFETIME * 0.8f, IsPlayerBullet = false, Damage = e.WeaponDamage });
+                    }
+                    // Turret 3: straight forward (mid section)
+                    if (e.TurretCooldown3 <= 0f)
+                    {
+                        e.TurretCooldown3 = 0.5f;
+                        Vector2 dir = Vector2.FromAngle(fwdAngle);
+                        Vector2 muzzle = e.Position + dir * 18f * 2f * 0.1f;
+                        _bullets.Add(new Bullet { Position = muzzle, Velocity = dir * BULLET_SPEED * 0.8f + e.Velocity * 0.3f, Lifetime = BULLET_LIFETIME * 0.8f, IsPlayerBullet = false, Damage = e.WeaponDamage });
+                    }
+                }
+
+                // Missile fire for ships with missile launchers
+                if (weaponsOk && distToPlayer < engageRange + 100f)
+                {
+                    if (e.MissileCooldown1 <= 0f)
+                    {
+                        float cd = 0f;
+                        if (e.Type == "missile_frigate") cd = 4f;
+                        else if (e.Type == "destroyer") cd = 5f;
+                        else if (e.Type == "battleship") cd = 6f;
+                        if (cd > 0f)
+                        {
+                            e.MissileCooldown1 = cd;
+                            Vector2 dir = Vector2.FromAngle(e.Angle);
+                            Vector2 muzzle = e.Position + dir * 18f * 0.8f;
+                            _missiles.Add(new Missile
+                            {
+                                Position = muzzle,
+                                Velocity = dir * 150f + e.Velocity * 0.3f,
+                                Lifetime = 3.5f,
+                                TargetIndex = -1,
+                                IsEnemyMissile = true
+                            });
+                        }
+                    }
+                    // Second missile launcher (frigate and battleship)
+                    if (e.MissileCooldown2 <= 0f && (e.Type == "missile_frigate" || e.Type == "battleship"))
+                    {
+                        float cd = e.Type == "missile_frigate" ? 5f : 7f;
+                        e.MissileCooldown2 = cd;
+                        Vector2 dir = Vector2.FromAngle(e.Angle + (e.Type == "battleship" ? 0.2f : -0.15f));
+                        Vector2 muzzle = e.Position + dir * 18f * 0.8f;
+                        _missiles.Add(new Missile
+                        {
+                            Position = muzzle,
+                            Velocity = dir * 150f + e.Velocity * 0.3f,
+                            Lifetime = 3.5f,
+                            TargetIndex = -1,
+                            IsEnemyMissile = true
+                        });
+                    }
                 }
 
                 if (e.StateTimer <= 0f)
@@ -3891,7 +4607,8 @@ public class SystemScene
             }
         }
 
-        e.Position += e.Velocity * dt;
+        if (!e.MovementDisabled)
+            e.Position += e.Velocity * dt;
 
         float distFromCenter = e.Position.Length();
         if (distFromCenter > _systemRadius * 0.9f)
@@ -3930,7 +4647,8 @@ public class SystemScene
                     Position = worldPos,
                     Velocity = bulletVel,
                     Lifetime = BULLET_LIFETIME,
-                    IsPlayerBullet = false
+                    IsPlayerBullet = false,
+                    Damage = 2f
                 });
             }
             _stationTurrets[i] = t;
@@ -4023,7 +4741,8 @@ public class SystemScene
                     Position = worldPos,
                     Velocity = bulletVel,
                     Lifetime = BULLET_LIFETIME,
-                    IsPlayerBullet = false
+                    IsPlayerBullet = false,
+                    Damage = 2f
                 });
             }
             _friendlyTurrets[i] = t;

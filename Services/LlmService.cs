@@ -110,7 +110,7 @@ public class LlmService : IDisposable
         lines.Add("");
         lines.Add("EMPIRE COMMANDER RULES:");
         lines.Add("- You can ONLY block routes between two EMPIRE systems (both have Hostility >= 3)");
-        lines.Add("- You can ONLY attack systems that have a direct connection to an Empire system (Hostility >= 3)");
+        lines.Add("- You can ONLY attack systems that have a direct connection to a Trigor Empire system (Faction == \"Trigor Empire\")");
         lines.Add("");
         lines.Add("ATLAS FEDERATION COMMANDER RULES:");
         lines.Add("- Capture Empire systems (Hostility >= 3) adjacent to Atlas Federation OR Independent systems");

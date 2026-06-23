@@ -41,7 +41,7 @@ public class SaveGameData
 
     public List<NewsArticle> NewsArticles { get; set; } = new();
 
-    public Dictionary<string, AttackStateSave> ActiveAttacks { get; set; } = new();
+    public Dictionary<string, List<AttackStateSave>> ActiveAttacks { get; set; } = new();
 
     public Vector2 GalaxyPlayerPos { get; set; }
     public Vector2 GalaxyPlayerVel { get; set; }

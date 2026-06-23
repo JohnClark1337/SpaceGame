@@ -3,7 +3,7 @@
     {
       "id": "first_journey",
       "name": "First Journey",
-      "description": "Travel to Alpha Centauri to register your ship with the Terran Federation.",
+      "description": "Travel to Alpha Centauri to register your ship with the Atlas Federation.",
       "objectiveType": "travel",
       "targetSystem": "alpha",
       "targetCount": 1,

@@ -32,7 +32,7 @@ public class Game1 : Game
     private LlmService? _llmService;
     private bool _useLlm;
     private bool _llmChecked;
-    private readonly Dictionary<string, AttackState> _activeAttacks = new();
+    private readonly Dictionary<string, List<AttackState>> _activeAttacks = new();
     private const float AttackDuration = 60f;
 
     public RouteManager RouteManager => _routeManager;
@@ -275,11 +275,11 @@ public class Game1 : Game
                 ProductionRates = new Dictionary<string, float>(kv.Value.ProductionRates)
             }),
             NewsArticles = _galaxy.NewsService.Articles.ToList(),
-            ActiveAttacks = _activeAttacks.ToDictionary(kv => kv.Key, kv => new AttackStateSave
+            ActiveAttacks = _activeAttacks.ToDictionary(kv => kv.Key, kv => kv.Value.Select(s => new AttackStateSave
             {
-                Timer = kv.Value.Timer,
-                Attacker = kv.Value.Attacker
-            }),
+                Timer = s.Timer,
+                Attacker = s.Attacker
+            }).ToList()),
             GalaxyPlayerPos = _galaxyPlayerPos,
             GalaxyPlayerVel = _galaxyPlayerVel,
             AiTickTimer = _aiTickTimer,
@@ -382,7 +382,7 @@ public class Game1 : Game
             // Restore attacks and timers
             _activeAttacks.Clear();
             foreach (var kv in data.ActiveAttacks)
-                _activeAttacks[kv.Key] = new AttackState { Timer = kv.Value.Timer, Attacker = kv.Value.Attacker };
+                _activeAttacks[kv.Key] = kv.Value.Select(s => new AttackState { Timer = s.Timer, Attacker = s.Attacker }).ToList();
 
             _galaxyPlayerPos = data.GalaxyPlayerPos;
             _galaxyPlayerVel = data.GalaxyPlayerVel;
@@ -1068,19 +1068,21 @@ public class Game1 : Game
             }
 
             // Attack timer — pauses while player is inside the attacked system
-            if (_viewMode == ViewMode.System && _galaxy.CurrentSystem != null &&
-                _activeAttacks.ContainsKey(_galaxy.CurrentSystem.Id))
-            {
-                // Timer frozen — player is on-site
-            }
-            else
+            bool inAttackedSystem = _viewMode == ViewMode.System && _galaxy.CurrentSystem != null &&
+                _activeAttacks.ContainsKey(_galaxy.CurrentSystem.Id);
+            if (!inAttackedSystem)
             {
                 foreach (var id in _activeAttacks.Keys.ToList())
                 {
-                    _activeAttacks[id].Timer -= dt;
-                    if (_activeAttacks[id].Timer <= 0f)
+                    var list = _activeAttacks[id];
+                    // Decrement the first attack's timer; all share the same window
+                    if (list.Count > 0)
                     {
-                        ResolveAttack(id);
+                        var first = list[0];
+                        first.Timer -= dt;
+                        list[0] = first;
+                        if (first.Timer <= 0f)
+                            ResolveAttack(id);
                     }
                 }
             }
@@ -3000,13 +3002,36 @@ public class Game1 : Game
         return lines;
     }
 
-    public bool IsSystemUnderAttack(string systemId) => _activeAttacks.ContainsKey(systemId);
+    public bool IsSystemUnderAttack(string systemId) => _activeAttacks.ContainsKey(systemId) && _activeAttacks[systemId].Count > 0;
+
+    public string? GetAttackAttacker(string systemId)
+    {
+        if (_activeAttacks.TryGetValue(systemId, out var list) && list.Count > 0)
+            return list[0].Attacker;
+        return null;
+    }
+
+    public List<string> GetAttackAttackers(string systemId)
+    {
+        if (_activeAttacks.TryGetValue(systemId, out var list))
+            return list.Select(a => a.Attacker).ToList();
+        return new List<string>();
+    }
+
+    public void SetStatusMessage(string message, float duration = 3f)
+    {
+        _statusMessage = message;
+        _statusTimer = duration;
+    }
 
     public void EmpireStartAttack(string systemId)
     {
         var sys = _galaxy.FindSystemById(systemId);
-        if (sys == null || sys.Hostility >= 3 || _activeAttacks.ContainsKey(systemId)) return;
-        _activeAttacks[systemId] = new AttackState { Timer = AttackDuration, Attacker = "Trigor Empire" };
+        if (sys == null || sys.Hostility >= 3) return;
+        if (!_activeAttacks.ContainsKey(systemId))
+            _activeAttacks[systemId] = new List<AttackState>();
+        // Allow multiple attackers on the same system
+        _activeAttacks[systemId].Add(new AttackState { Timer = AttackDuration, Attacker = "Trigor Empire" });
         _statusMessage = $"Trigor Empire is attacking {sys.Name}!";
         _statusTimer = 5f;
         _galaxy.NewsService?.PostBreakingNews(
@@ -3018,8 +3043,11 @@ public class Game1 : Game
     public void FederationStartAttack(string systemId)
     {
         var sys = _galaxy.FindSystemById(systemId);
-        if (sys == null || sys.Hostility < 3 || _activeAttacks.ContainsKey(systemId)) return;
-        _activeAttacks[systemId] = new AttackState { Timer = AttackDuration, Attacker = "Atlas Federation" };
+        if (sys == null || sys.Hostility < 3) return;
+        if (!_activeAttacks.ContainsKey(systemId))
+            _activeAttacks[systemId] = new List<AttackState>();
+        // Allow multiple attackers on the same system
+        _activeAttacks[systemId].Add(new AttackState { Timer = AttackDuration, Attacker = "Atlas Federation" });
         _statusMessage = $"Atlas Federation is attacking {sys.Name}!";
         _statusTimer = 5f;
         _galaxy.NewsService?.PostBreakingNews(
@@ -3039,9 +3067,9 @@ public class Game1 : Game
 
     public bool TryGetAttackTimer(string systemId, out float remaining)
     {
-        if (_activeAttacks.TryGetValue(systemId, out var state))
+        if (_activeAttacks.TryGetValue(systemId, out var list) && list.Count > 0)
         {
-            remaining = state.Timer;
+            remaining = list.Min(a => a.Timer);
             return true;
         }
         remaining = 0;
@@ -3115,7 +3143,7 @@ public class Game1 : Game
                 foreach (var conn in target.Connections)
                 {
                     var neighbor = _galaxy.FindSystemById(conn);
-                    if (neighbor != null && neighbor.Hostility >= 3)
+                    if (neighbor != null && neighbor.Faction == "Trigor Empire")
                     {
                         adjacent = true;
                         break;
@@ -3168,8 +3196,14 @@ public class Game1 : Game
         var sys = _galaxy.FindSystemById(systemId);
         if (sys == null) return;
 
-        if (!_activeAttacks.TryGetValue(systemId, out var state)) return;
-        string attacker = state.Attacker;
+        if (!_activeAttacks.TryGetValue(systemId, out var list) || list.Count == 0) return;
+
+        // If player is currently in this system, don't auto-resolve — let player actions decide
+        if (_player.CurrentSystemId == systemId && _viewMode == ViewMode.System)
+            return;
+
+        // Random winner among all attackers
+        string attacker = list[Random.Shared.Next(list.Count)].Attacker;
 
         if (attacker == "Atlas Federation")
         {
@@ -3213,12 +3247,12 @@ public class Game1 : Game
 
         var target = targets[Random.Shared.Next(targets.Count)];
 
-        // Empire can ONLY attack systems directly adjacent to an Empire system (1 hop)
+        // Empire can ONLY attack systems directly adjacent to an actual Trigor Empire system (1 hop)
         bool adjacentToEmpire = false;
         foreach (var conn in target.Connections)
         {
             var neighbor = _galaxy.FindSystemById(conn);
-            if (neighbor != null && neighbor.Hostility >= 3)
+            if (neighbor != null && neighbor.Faction == "Trigor Empire")
             {
                 adjacentToEmpire = true;
                 break;
