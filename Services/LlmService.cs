@@ -15,6 +15,8 @@ public class LlmDecision
     public string? EmpireNewsBody { get; set; }
     public string? FederationNewsHeadline { get; set; }
     public string? FederationNewsBody { get; set; }
+    public string? EmpireBroadcast { get; set; }
+    public string? FederationBroadcast { get; set; }
 }
 
 public class LlmService : IDisposable
@@ -127,8 +129,14 @@ public class LlmService : IDisposable
         lines.Add("- Federation news source: \"Atlas Federation News Network\"");
         lines.Add("- Keep headlines short and dramatic. Keep bodies 1-2 sentences.");
         lines.Add("");
+        lines.Add("GALACTIC BROADCAST RULES:");
+        lines.Add("- Optionally include a dramatic 1-2 sentence galactic broadcast from each faction");
+        lines.Add("- Empire broadcasts are threats, warnings, or demands for surrender");
+        lines.Add("- Federation broadcasts are proclamations, calls for aid, or declarations of defiance");
+        lines.Add("- These broadcasts are transmitted to ALL ships in the galaxy");
+        lines.Add("");
         lines.Add("Respond ONLY with JSON, no other text:");
-        lines.Add("{ \"blockRoutes\": [[\"systemA\",\"systemB\"]], \"attackSystem\": \"systemId or null\", \"federationAttackSystem\": \"systemId or null\", \"federationUnblockRoutes\": [[\"systemA\",\"systemB\"]], \"empireNewsHeadline\": \"...\", \"empireNewsBody\": \"...\", \"federationNewsHeadline\": \"...\", \"federationNewsBody\": \"...\" }");
+        lines.Add("{ \"blockRoutes\": [[\"systemA\",\"systemB\"]], \"attackSystem\": \"systemId or null\", \"federationAttackSystem\": \"systemId or null\", \"federationUnblockRoutes\": [[\"systemA\",\"systemB\"]], \"empireNewsHeadline\": \"...\", \"empireNewsBody\": \"...\", \"federationNewsHeadline\": \"...\", \"federationNewsBody\": \"...\", \"empireBroadcast\": \"... or null\", \"federationBroadcast\": \"... or null\" }");
 
         return string.Join("\n", lines);
     }

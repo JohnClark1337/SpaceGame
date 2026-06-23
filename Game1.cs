@@ -34,6 +34,8 @@ public class Game1 : Game
     private bool _llmChecked;
     private readonly Dictionary<string, List<AttackState>> _activeAttacks = new();
     private const float AttackDuration = 60f;
+    private readonly List<GalacticBroadcast> _pendingBroadcasts = new();
+    private bool _showBroadcastDialog;
 
     public RouteManager RouteManager => _routeManager;
     public Galaxy Galaxy => _galaxy;
@@ -334,6 +336,7 @@ public class Game1 : Game
             _player.Consumables = data.Consumables.Select(r => new InventoryEntry { Id = r.Id, Quantity = r.Quantity }).ToList();
             _player.UnequippedEquipment = data.UnequippedEquipment.Select(r => new InventoryEntry { Id = r.Id, Quantity = r.Quantity }).ToList();
             _player.Equipment = new Dictionary<string, string>(data.Equipment);
+            _player.RecalculateStats(_galaxy.AllEquipment);
             _player.BaseMaxSpeed = data.BaseMaxSpeed;
             _player.BaseThrust = data.BaseThrust;
             _player.BaseRotationSpeed = data.BaseRotationSpeed;
@@ -457,6 +460,7 @@ public class Game1 : Game
         _player.CurrentSystemId = null;
 
         _galaxy.LoadData();
+        _player.RecalculateStats(_galaxy.AllEquipment);
         _routeManager.SetGalaxy(_galaxy);
 
         // Set initial Empire defense levels
@@ -708,6 +712,7 @@ public class Game1 : Game
                                         _player.UnequippedEquipment.RemoveAll(e => e.Id == selected);
                                 }
                             }
+                            _player.RecalculateStats(_galaxy.AllEquipment);
                             _equipSelectMode = false;
                         }
                     }
@@ -1216,6 +1221,18 @@ public class Game1 : Game
                 _menuSelection = 0;
                 return;
             }
+            if (JustPressed(keyboard, Keys.B))
+            {
+                if (_showBroadcastDialog)
+                    _showBroadcastDialog = false;
+                else if (_pendingBroadcasts.Count > 0)
+                    _showBroadcastDialog = true;
+            }
+        }
+        else if (_showBroadcastDialog)
+        {
+            if (JustPressed(keyboard, Keys.Escape) || JustPressed(keyboard, Keys.B))
+                _showBroadcastDialog = false;
         }
         else if (_currentMenu == MenuType.Pause)
         {
@@ -1419,6 +1436,9 @@ public class Game1 : Game
 
         if (_showQuestLog)
             DrawQuestLog();
+
+        if (_showBroadcastDialog)
+            DrawBroadcastDialog();
 
         _spriteBatch.End();
 
@@ -3124,6 +3144,30 @@ public class Game1 : Game
                 "Atlas Federation News Network", "Atlas Federation");
         }
 
+        // Galactic broadcasts
+        if (!string.IsNullOrEmpty(decision.EmpireBroadcast))
+        {
+            _pendingBroadcasts.Add(new GalacticBroadcast
+            {
+                Faction = "Trigor Empire",
+                Message = decision.EmpireBroadcast,
+                Timestamp = (float)_gameTime.TotalGameTime.TotalSeconds
+            });
+            _statusMessage = "Galactic Broadcast Received! Press B to view";
+            _statusTimer = 6f;
+        }
+        if (!string.IsNullOrEmpty(decision.FederationBroadcast))
+        {
+            _pendingBroadcasts.Add(new GalacticBroadcast
+            {
+                Faction = "Atlas Federation",
+                Message = decision.FederationBroadcast,
+                Timestamp = (float)_gameTime.TotalGameTime.TotalSeconds
+            });
+            _statusMessage = "Galactic Broadcast Received! Press B to view";
+            _statusTimer = 6f;
+        }
+
         // Empire actions
         if (decision.BlockRoutes != null)
         {
@@ -3457,6 +3501,88 @@ public class Game1 : Game
 
         DrawSpacedText(_titleFont, msg,
             new Microsoft.Xna.Framework.Vector2(x, y), Color.White * alpha);
+    }
+
+    private void DrawBroadcastDialog()
+    {
+        int w = ScreenWidth;
+        int h = ScreenHeight;
+        float dialogW = 600f;
+        float dialogH = 400f;
+        float dx = (w - dialogW) / 2f;
+        float dy = (h - dialogH) / 2f;
+
+        // Dim background
+        _spriteBatch.Draw(_pixel, new Microsoft.Xna.Framework.Rectangle(0, 0, w, h),
+            new Color(0, 0, 0, 180));
+
+        // Dialog box
+        _spriteBatch.Draw(_pixel, new Microsoft.Xna.Framework.Rectangle((int)dx, (int)dy, (int)dialogW, (int)dialogH),
+            new Color(10, 10, 30, 240));
+        DrawRect(dx, dy, dialogW, dialogH, new Color(80, 80, 140));
+
+        // Title
+        DrawSpacedText(_titleFont, "GALACTIC BROADCAST",
+            new Microsoft.Xna.Framework.Vector2(dx + 20, dy + 15), Color.Gold);
+
+        float textY = dy + 60f;
+        float textX = dx + 30f;
+        float maxTextW = dialogW - 60f;
+
+        if (_pendingBroadcasts.Count == 0)
+        {
+            DrawSpacedText(_font, "No broadcasts received.",
+                new Microsoft.Xna.Framework.Vector2(textX, textY), Color.Gray);
+            textY += 30f;
+        }
+        else
+        {
+            foreach (var bc in _pendingBroadcasts)
+            {
+                // Faction header
+                Color factionColor = bc.Faction == "Trigor Empire" ? new Color(220, 60, 60) : new Color(60, 140, 220);
+                DrawSpacedText(_titleFont, bc.Faction,
+                    new Microsoft.Xna.Framework.Vector2(textX, textY), factionColor);
+                textY += 30f;
+
+                // Message body with word wrap
+                string msg = bc.Message;
+                float wrapW = maxTextW;
+                var words = msg.Split(' ');
+                string line = "";
+                foreach (var word in words)
+                {
+                    string testLine = line.Length == 0 ? word : line + " " + word;
+                    var sz = _font.MeasureString(testLine);
+                    if (sz.X > wrapW && line.Length > 0)
+                    {
+                        DrawSpacedText(_font, line,
+                            new Microsoft.Xna.Framework.Vector2(textX, textY), Color.White * 0.9f);
+                        textY += 22f;
+                        line = word;
+                    }
+                    else
+                    {
+                        line = testLine;
+                    }
+                }
+                if (line.Length > 0)
+                {
+                    DrawSpacedText(_font, line,
+                        new Microsoft.Xna.Framework.Vector2(textX, textY), Color.White * 0.9f);
+                    textY += 22f;
+                }
+
+                textY += 15f;
+
+                if (textY > dy + dialogH - 50f)
+                    break;
+            }
+        }
+
+        // Footer
+        DrawSpacedText(_font, "[ESC or B] Close",
+            new Microsoft.Xna.Framework.Vector2(dx + 20, dy + dialogH - 30f), Color.Gray * 0.7f);
     }
 
     private void DrawLine(float x1, float y1, float x2, float y2, Color color)

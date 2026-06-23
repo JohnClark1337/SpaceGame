@@ -12,6 +12,8 @@ public class Player
     public int Credits { get; set; } = 50;
     public int Health { get; set; } = 50;
     public int MaxHealth { get; set; } = 50;
+    public float ShieldHP { get; set; }
+    public float MaxShieldHP { get; set; }
     public float Fuel { get; set; } = 100f;
     public float MaxFuel { get; set; } = 100f;
     public List<string> OwnedUpgrades { get; set; } = new();
@@ -31,29 +33,13 @@ public class Player
 
     private const float Drag = 0.98f;
 
-    public float MaxSpeed
-    {
-        get
-        {
-            float mult = 1f;
-            if (OwnedUpgrades.Contains("speed_boost")) mult *= 1.25f;
-            return BaseMaxSpeed * mult;
-        }
-    }
-
+    public float MaxSpeed => BaseMaxSpeed * _speedMult;
     public float Thrust => BaseThrust;
+    public float RotationSpeed => BaseRotationSpeed * (OwnedUpgrades.Contains("handling_v1") ? 1.3f : 1f);
 
-    public float RotationSpeed
-    {
-        get
-        {
-            float mult = 1f;
-            if (OwnedUpgrades.Contains("handling_v1")) mult *= 1.3f;
-            return BaseRotationSpeed * mult;
-        }
-    }
+    private float _speedMult = 1f;
 
-    public bool HasShield => OwnedUpgrades.Contains("shield_v1") || Equipment.ContainsKey("shield");
+    public bool HasShield => MaxShieldHP > 0;
 
     public int UsedCargo
     {
@@ -68,46 +54,115 @@ public class Player
 
     public bool HasEnergyCanister => Consumables.Any(c => c.Id == "energy_canister" && c.Quantity > 0);
 
-    public float FuelEfficiency
+    public void RecalculateStats(List<EquipmentDef> allEquipment)
     {
-        get
+        float shieldBonus = 0;
+        float armorHpBonus = 0;
+        float speedMult = 1f;
+        float fuelEff = 1f;
+        int cargoBonus = 0;
+
+        foreach (var kv in Equipment)
         {
-            if (Equipment.TryGetValue("engine", out var id) && id == "efficient_engine")
-                return 0.8f;
-            return 1f;
+            var def = allEquipment.FirstOrDefault(e => e.Id == kv.Value);
+            if (def == null) continue;
+
+            switch (def.EffectType)
+            {
+                case "shield_strength":
+                    shieldBonus += def.EffectValue;
+                    break;
+                case "armor_hp":
+                    armorHpBonus += (int)def.EffectValue;
+                    break;
+                case "engine_boost":
+                    speedMult *= def.EffectValue;
+                    break;
+                case "engine_efficiency":
+                    fuelEff *= def.EffectValue;
+                    break;
+                case "cargo_capacity":
+                    cargoBonus += (int)def.EffectValue;
+                    break;
+            }
         }
+
+        // Apply ownable upgrades too
+        if (OwnedUpgrades.Contains("speed_boost")) speedMult *= 1.25f;
+
+        _speedMult = speedMult;
+        FuelEfficiency = fuelEff;
+        MaxShieldHP = shieldBonus;
+        ShieldHP = MathF.Min(ShieldHP, MaxShieldHP);
+        int baseHp = 50;
+        MaxHealth = baseHp + (int)armorHpBonus;
+        Health = Math.Min(Health, MaxHealth);
+        CargoCapacity = 100 + cargoBonus;
+    }
+
+    public float FuelEfficiency { get; set; } = 1f;
+
+    public bool UseConsumable(string id, float effectValue, string effectType)
+    {
+        var entry = Consumables.FirstOrDefault(c => c.Id == id);
+        if (entry == null || entry.Quantity <= 0)
+            return false;
+        entry.Quantity--;
+        if (entry.Quantity <= 0)
+            Consumables.RemoveAll(c => c.Id == id);
+
+        switch (effectType)
+        {
+            case "fuel_refill":
+                Fuel = MathF.Min(MaxFuel, Fuel + MaxFuel * effectValue);
+                break;
+            case "fuel_add":
+                Fuel = MathF.Min(MaxFuel, Fuel + effectValue);
+                break;
+            case "repair_hp":
+                Health = Math.Min(MaxHealth, Health + (int)effectValue);
+                break;
+        }
+        return true;
     }
 
     public bool UseEnergyCanister()
     {
-        var entry = Consumables.FirstOrDefault(c => c.Id == "energy_canister");
-        if (entry == null || entry.Quantity <= 0)
-            return false;
-        entry.Quantity--;
-        if (entry.Quantity <= 0)
-            Consumables.RemoveAll(c => c.Id == "energy_canister");
-        Fuel = MathF.Min(MaxFuel, Fuel + MaxFuel * 0.2f);
-        return true;
+        return UseConsumable("energy_canister", 0.2f, "fuel_refill");
     }
 
     public bool UseFuelCell()
     {
-        if (Fuel >= MaxFuel)
-            return false;
-        var entry = Consumables.FirstOrDefault(c => c.Id == "fuel_cell");
-        if (entry == null || entry.Quantity <= 0)
-            return false;
-        entry.Quantity--;
-        if (entry.Quantity <= 0)
-            Consumables.RemoveAll(c => c.Id == "fuel_cell");
-        Fuel = MathF.Min(MaxFuel, Fuel + 20f);
-        return true;
+        return UseConsumable("fuel_cell", 20f, "fuel_add");
     }
 
     public string? GetEquippedWeapon(int slotIndex)
     {
         string key = slotIndex == 0 ? "weapon1" : "weapon2";
         return Equipment.TryGetValue(key, out var id) ? id : null;
+    }
+
+    public float GetWeaponDamage(List<EquipmentDef> allEquipment, int slotIndex)
+    {
+        string key = slotIndex == 0 ? "weapon1" : "weapon2";
+        if (!Equipment.TryGetValue(key, out var id))
+            return 1f;
+        var def = allEquipment.FirstOrDefault(e => e.Id == id);
+        if (def == null || (def.EffectType != "weapon_bullet" && def.EffectType != "weapon_damage" && def.EffectType != "weapon_missile"))
+            return 1f;
+        return def.EffectValue;
+    }
+
+    public void TakeDamage(float amount)
+    {
+        if (ShieldHP > 0f)
+        {
+            float absorbed = MathF.Min(ShieldHP, amount);
+            ShieldHP -= absorbed;
+            amount -= absorbed;
+        }
+        if (amount > 0f)
+            Health = Math.Max(0, Health - (int)amount);
     }
 
     public int MissileAmmoCount

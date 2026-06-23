@@ -112,6 +112,8 @@ public class SystemScene
     private Vector2 _waypointPosition;
     private int _waypointIndex;
     private List<(Vector2 pos, string name)> _waypointTargets = new();
+    private int _targetIndex = -1;
+    private Vector2 _targetPosition;
 
     private struct Bullet
     {
@@ -672,6 +674,26 @@ public class SystemScene
                     : _waypointPosition;
             }
 
+            // Combat target cycling
+            if (keyboard.IsKeyDown(Keys.O) && _prevKeyboard.IsKeyUp(Keys.O))
+            {
+                CycleCombatTarget();
+            }
+
+            // Reset to nearest enemy
+            if (keyboard.IsKeyDown(Keys.N) && _prevKeyboard.IsKeyUp(Keys.N))
+            {
+                AutoTargetNearestEnemy();
+            }
+
+            // Auto-target nearest enemy if no current target
+            if (_targetIndex < 0 || _targetIndex >= _enemies.Count)
+                AutoTargetNearestEnemy();
+
+            // Update target position each frame
+            if (_targetIndex >= 0 && _targetIndex < _enemies.Count)
+                _targetPosition = _enemies[_targetIndex].Position;
+
             // Training mode input (F1 spawn menu, ESC pause) - intercepts normal update
             if (TrainingMode)
             {
@@ -907,6 +929,31 @@ public class SystemScene
                 }
             }
 
+            // Consumable usage keys (always available)
+            if (!_docked && !_gameOver && !_exploding)
+            {
+                if (keyboard.IsKeyDown(Keys.R) && prevKb.IsKeyUp(Keys.R))
+                {
+                    var repairEntry = _player.Consumables.FirstOrDefault(c => c.Id.StartsWith("repair_kit_") && c.Quantity > 0);
+                    if (repairEntry != null)
+                    {
+                        var def = _game.Galaxy.FindConsumable(repairEntry.Id);
+                        if (def != null)
+                            _player.UseConsumable(repairEntry.Id, def.EffectValue, def.EffectType);
+                    }
+                }
+                if (keyboard.IsKeyDown(Keys.F) && prevKb.IsKeyUp(Keys.F))
+                {
+                    var fuelEntry = _player.Consumables.FirstOrDefault(c => (c.Id.StartsWith("fuel_cell") || c.Id.StartsWith("energy_canister")) && c.Quantity > 0);
+                    if (fuelEntry != null)
+                    {
+                        var def = _game.Galaxy.FindConsumable(fuelEntry.Id);
+                        if (def != null)
+                            _player.UseConsumable(fuelEntry.Id, def.EffectValue, def.EffectType);
+                    }
+                }
+            }
+
             // Update motion particles
             Vector2 particleVel = _player.Velocity * ZOOM * dt;
             for (int i = 0; i < _particles.Length; i++)
@@ -959,13 +1006,24 @@ public class SystemScene
                     if (spacePressed && _weaponCooldown <= 0f)
                     {
                         _weaponCooldown = 0.25f;
+                        float bulletDmg = 1f;
+                        for (int wi = 0; wi < 2; wi++)
+                        {
+                            string? eid = _player.GetEquippedWeapon(wi);
+                            if (eid != null)
+                            {
+                                var def = _game.Galaxy.FindEquipment(eid);
+                                if (def != null && def.EffectType == "weapon_bullet")
+                                    bulletDmg = def.EffectValue;
+                            }
+                        }
                         _bullets.Add(new Bullet
                         {
                             Position = muzzlePos,
                             Velocity = Vector2.FromAngle(_player.Angle) * BULLET_SPEED + _player.Velocity * 0.5f,
                             Lifetime = BULLET_LIFETIME,
                             IsPlayerBullet = true,
-                            Damage = 1f
+                            Damage = bulletDmg
                         });
                     }
                 }
@@ -976,7 +1034,7 @@ public class SystemScene
                     {
                         _weaponCooldown = 0.1f;
                         if (!_trainingInvincible)
-                            _player.Fuel = MathF.Max(0, _player.Fuel - 1.667f * dt);
+                            _player.Fuel = MathF.Max(0, _player.Fuel - 1.667f * dt * _player.FuelEfficiency);
 
                         float range = 18f;
                         Vector2 beamEnd = muzzlePos + Vector2.FromAngle(_player.Angle) * range;
@@ -990,6 +1048,16 @@ public class SystemScene
 
                         // Check line-circle collision with enemies
                         float beamDmg = 1.5f;
+                        for (int wi = 0; wi < 2; wi++)
+                        {
+                            string? eid = _player.GetEquippedWeapon(wi);
+                            if (eid != null)
+                            {
+                                var def = _game.Galaxy.FindEquipment(eid);
+                                if (def != null && def.EffectType == "weapon_damage")
+                                    beamDmg = def.EffectValue;
+                            }
+                        }
                         for (int ei = _enemies.Count - 1; ei >= 0; ei--)
                         {
                             var e = _enemies[ei];
@@ -1106,7 +1174,18 @@ public class SystemScene
                     // Check collision with target
                     if (homingDist < 20f)
                     {
-                        DamageEnemy(m.TargetIndex, 5f, m.Position);
+                        float missileDmg = 5f;
+                        for (int wi = 0; wi < 2; wi++)
+                        {
+                            string? eid = _player.GetEquippedWeapon(wi);
+                            if (eid != null)
+                            {
+                                var def = _game.Galaxy.FindEquipment(eid);
+                                if (def != null && def.EffectType == "weapon_missile")
+                                    missileDmg = def.EffectValue;
+                            }
+                        }
+                        DamageEnemy(m.TargetIndex, missileDmg, m.Position);
                         remove = true;
                     }
                 }
@@ -1128,7 +1207,7 @@ public class SystemScene
                     // Check collision with player
                     if (!_trainingInvincible && homingDist < 22f)
                     {
-                        _player.Health -= 5;
+                        _player.TakeDamage(5);
                         _enemyExplosions.Add(new EnemyExplosion
                         {
                             Position = m.Position,
@@ -1411,7 +1490,7 @@ public class SystemScene
                 if (b.IsPlayerBullet) continue;
                 if (!_trainingInvincible && Vector2.Distance(b.Position, _player.Position) < 22f)
                 {
-                    _player.Health -= (int)(b.Damage > 0f ? b.Damage : 2f);
+                    _player.TakeDamage(b.Damage > 0f ? b.Damage : 2f);
                     _bullets.RemoveAt(i);
                 }
             }
@@ -2116,6 +2195,10 @@ public class SystemScene
         // Waypoint arrow
         if (!_docked)
             DrawWaypointArrow(sb, pixel, font, center);
+
+        // Combat target arrow (red, only when enemies exist)
+        if (!_docked && _enemies.Count > 0 && _targetIndex >= 0 && _targetIndex < _enemies.Count)
+            DrawCombatArrow(sb, pixel, font, center);
 
         // Mini-map
         DrawMiniMap(sb, pixel, font, screenW, screenH);
@@ -3604,6 +3687,70 @@ public class SystemScene
         }
     }
 
+    private void AutoTargetNearestEnemy()
+    {
+        float closest = float.MaxValue;
+        int closestIdx = -1;
+        for (int i = 0; i < _enemies.Count; i++)
+        {
+            float d = Vector2.Distance(_player.Position, _enemies[i].Position);
+            if (d < closest)
+            {
+                closest = d;
+                closestIdx = i;
+            }
+        }
+        if (closestIdx >= 0)
+        {
+            _targetIndex = closestIdx;
+            _targetPosition = _enemies[closestIdx].Position;
+        }
+    }
+
+    private void CycleCombatTarget()
+    {
+        if (_enemies.Count == 0) return;
+        _targetIndex = (_targetIndex + 1) % _enemies.Count;
+        if (_targetIndex >= 0 && _targetIndex < _enemies.Count)
+            _targetPosition = _enemies[_targetIndex].Position;
+    }
+
+    private void DrawCombatArrow(SpriteBatch sb, Texture2D pixel, SpriteFont font, Vector2 center)
+    {
+        Vector2 dir = _targetPosition - _player.Position;
+        float dist = dir.Length();
+        if (dist < 1f) return;
+        dir = dir.Normalized();
+
+        float arrowRadius = 55f;
+        Vector2 arrowPos = center + dir * arrowRadius;
+        float arrowSize = 12f;
+
+        Vector2 tip = arrowPos + dir * arrowSize;
+        Vector2 left = arrowPos + Vector2.FromAngle(MathF.Atan2(dir.Y, dir.X) + 2.3f) * arrowSize * 0.5f;
+        Vector2 right = arrowPos + Vector2.FromAngle(MathF.Atan2(dir.Y, dir.X) - 2.3f) * arrowSize * 0.5f;
+
+        Color c = Color.Red;
+        DrawLine(sb, pixel, tip.X, tip.Y, left.X, left.Y, c);
+        DrawLine(sb, pixel, tip.X, tip.Y, right.X, right.Y, c);
+
+        string distText = $"{(int)dist}u";
+        var ts = font.MeasureString(distText);
+        DrawSpacedText(sb, font, distText,
+            new Microsoft.Xna.Framework.Vector2(arrowPos.X - ts.X / 2f, arrowPos.Y + arrowSize + 3f),
+            c * 0.7f);
+
+        // Target name
+        if (_targetIndex >= 0 && _targetIndex < _enemies.Count)
+        {
+            string targetName = _enemies[_targetIndex].Type;
+            var ns = font.MeasureString(targetName);
+            DrawSpacedText(sb, font, targetName,
+                new Microsoft.Xna.Framework.Vector2(arrowPos.X - ns.X / 2f, arrowPos.Y + arrowSize + 18f),
+                c * 0.5f);
+        }
+    }
+
     private void DrawMiniMap(SpriteBatch sb, Texture2D pixel, SpriteFont font, int screenW, int screenH)
     {
         int mapSize = 150;
@@ -4678,7 +4825,7 @@ public class SystemScene
                 });
                 if (!_trainingInvincible && LineCircleIntersect(turretPos, beamEnd, _player.Position, 22f))
                 {
-                    _player.Health -= 1;
+                    _player.TakeDamage(1);
                 }
             }
 

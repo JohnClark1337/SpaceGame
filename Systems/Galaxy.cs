@@ -62,24 +62,18 @@ public class Galaxy
 
         AllConsumables = new List<ConsumableDef>
         {
-            new ConsumableDef
-            {
-                Id = "energy_canister",
-                Name = "Energy Canister",
-                Description = "Refuels the ship by 20%",
-                Cost = 50,
-                EffectType = "fuel_refill",
-                EffectValue = 0.2f
-            },
-            new ConsumableDef
-            {
-                Id = "fuel_cell",
-                Name = "Fuel Cell",
-                Description = "Adds 20 fuel instantly",
-                Cost = 0,
-                EffectType = "fuel_add",
-                EffectValue = 20f
-            }
+            new ConsumableDef { Id = "energy_canister", Name = "Energy Canister", Description = "Refills 20% of max fuel", Cost = 50, EffectType = "fuel_refill", EffectValue = 0.2f, MinQuests = 0 },
+            new ConsumableDef { Id = "energy_canister_adv", Name = "Advanced Energy Canister", Description = "Refills 40% of max fuel", Cost = 150, EffectType = "fuel_refill", EffectValue = 0.4f, MinQuests = 5 },
+            new ConsumableDef { Id = "energy_canister_prem", Name = "Premium Energy Canister", Description = "Refills 60% of max fuel", Cost = 400, EffectType = "fuel_refill", EffectValue = 0.6f, MinQuests = 12 },
+            new ConsumableDef { Id = "energy_canister_ult", Name = "Ultimate Energy Canister", Description = "Refills 100% of max fuel", Cost = 1000, EffectType = "fuel_refill", EffectValue = 1.0f, MinQuests = 20 },
+            new ConsumableDef { Id = "fuel_cell", Name = "Fuel Cell", Description = "Adds 20 fuel", Cost = 0, EffectType = "fuel_add", EffectValue = 20f, MinQuests = 0 },
+            new ConsumableDef { Id = "fuel_cell_adv", Name = "Advanced Fuel Cell", Description = "Adds 40 fuel", Cost = 50, EffectType = "fuel_add", EffectValue = 40f, MinQuests = 3 },
+            new ConsumableDef { Id = "fuel_cell_prem", Name = "Premium Fuel Cell", Description = "Adds 80 fuel", Cost = 150, EffectType = "fuel_add", EffectValue = 80f, MinQuests = 10 },
+            new ConsumableDef { Id = "fuel_cell_ult", Name = "Ultimate Fuel Cell", Description = "Adds 150 fuel", Cost = 500, EffectType = "fuel_add", EffectValue = 150f, MinQuests = 20 },
+            new ConsumableDef { Id = "repair_kit_basic", Name = "Repair Kit", Description = "Restores 15 HP", Cost = 100, EffectType = "repair_hp", EffectValue = 15f, MinQuests = 0 },
+            new ConsumableDef { Id = "repair_kit_adv", Name = "Advanced Repair Kit", Description = "Restores 30 HP", Cost = 300, EffectType = "repair_hp", EffectValue = 30f, MinQuests = 5 },
+            new ConsumableDef { Id = "repair_kit_prem", Name = "Premium Repair Kit", Description = "Restores 60 HP", Cost = 800, EffectType = "repair_hp", EffectValue = 60f, MinQuests = 12 },
+            new ConsumableDef { Id = "repair_kit_ult", Name = "Ultimate Repair Kit", Description = "Restores 120 HP", Cost = 2000, EffectType = "repair_hp", EffectValue = 120f, MinQuests = 20 }
         };
 
         AvailableQuests = new List<QuestData>(AllQuests);
@@ -211,10 +205,14 @@ public class Galaxy
     public ConsumableDef? FindConsumable(string id) =>
         AllConsumables.FirstOrDefault(c => c.Id == id);
 
-    public List<EquipmentDef> GetAvailableEquipmentForSystem(string systemId, Player player) =>
-        AllEquipment
+    public List<EquipmentDef> GetAvailableEquipmentForSystem(string systemId, Player player)
+    {
+        int questsDone = player.CompletedQuests.Count;
+        return AllEquipment
             .Where(e => e.Location == systemId)
+            .Where(e => e.MinQuests <= questsDone)
             .Where(e => !player.Equipment.ContainsValue(e.Id))
             .Where(e => !player.UnequippedEquipment.Any(u => u.Id == e.Id))
             .ToList();
+    }
 }
