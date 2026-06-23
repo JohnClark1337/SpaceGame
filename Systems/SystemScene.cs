@@ -1061,6 +1061,7 @@ public class SystemScene
                         for (int ei = _enemies.Count - 1; ei >= 0; ei--)
                         {
                             var e = _enemies[ei];
+                            if (e.Faction == "Atlas Federation" && _system.Hostility < 3) continue;
                             if (LineCircleIntersect(muzzlePos, beamEnd, e.Position, 16f))
                             {
                                 DamageEnemy(ei, beamDmg, e.Position);
@@ -1160,33 +1161,40 @@ public class SystemScene
                 if (!remove && !m.IsEnemyMissile && m.TargetIndex >= 0 && m.TargetIndex < _enemies.Count)
                 {
                     var target = _enemies[m.TargetIndex];
-                    Vector2 toTarget = target.Position - m.Position;
-                    float homingDist = toTarget.Length();
-                    if (homingDist > 1f)
+                    if (target.Faction == "Atlas Federation" && _system.Hostility < 3)
                     {
-                        Vector2 dir = toTarget.Normalized();
-                        m.Velocity += dir * dt * 150f;
-                        float maxMSpeed = 300f;
-                        if (m.Velocity.Length() > maxMSpeed)
-                            m.Velocity = m.Velocity.Normalized() * maxMSpeed;
-                    }
-
-                    // Check collision with target
-                    if (homingDist < 20f)
-                    {
-                        float missileDmg = 5f;
-                        for (int wi = 0; wi < 2; wi++)
-                        {
-                            string? eid = _player.GetEquippedWeapon(wi);
-                            if (eid != null)
-                            {
-                                var def = _game.Galaxy.FindEquipment(eid);
-                                if (def != null && def.EffectType == "weapon_missile")
-                                    missileDmg = def.EffectValue;
-                            }
-                        }
-                        DamageEnemy(m.TargetIndex, missileDmg, m.Position);
                         remove = true;
+                    }
+                    else
+                    {
+                        Vector2 toTarget = target.Position - m.Position;
+                        float homingDist = toTarget.Length();
+                        if (homingDist > 1f)
+                        {
+                            Vector2 dir = toTarget.Normalized();
+                            m.Velocity += dir * dt * 150f;
+                            float maxMSpeed = 300f;
+                            if (m.Velocity.Length() > maxMSpeed)
+                                m.Velocity = m.Velocity.Normalized() * maxMSpeed;
+                        }
+
+                        // Check collision with target
+                        if (homingDist < 20f)
+                        {
+                            float missileDmg = 5f;
+                            for (int wi = 0; wi < 2; wi++)
+                            {
+                                string? eid = _player.GetEquippedWeapon(wi);
+                                if (eid != null)
+                                {
+                                    var def = _game.Galaxy.FindEquipment(eid);
+                                    if (def != null && def.EffectType == "weapon_missile")
+                                        missileDmg = def.EffectValue;
+                                }
+                            }
+                            DamageEnemy(m.TargetIndex, missileDmg, m.Position);
+                            remove = true;
+                        }
                     }
                 }
 
@@ -1402,6 +1410,7 @@ public class SystemScene
                 for (int j = _enemies.Count - 1; j >= 0; j--)
                 {
                     var e = _enemies[j];
+                    if (e.Faction == "Atlas Federation" && _system.Hostility < 3) continue;
                     float colRadius = 16f;
                     if (e.Type == "battleship") colRadius = 40f;
                     else if (e.Type == "destroyer") colRadius = 24f;
@@ -3730,7 +3739,9 @@ public class SystemScene
         Vector2 left = arrowPos + Vector2.FromAngle(MathF.Atan2(dir.Y, dir.X) + 2.3f) * arrowSize * 0.5f;
         Vector2 right = arrowPos + Vector2.FromAngle(MathF.Atan2(dir.Y, dir.X) - 2.3f) * arrowSize * 0.5f;
 
-        Color c = Color.Red;
+        bool isFriendlyFed = _targetIndex >= 0 && _targetIndex < _enemies.Count
+            && _enemies[_targetIndex].Faction == "Atlas Federation" && _system.Hostility < 3;
+        Color c = isFriendlyFed ? Color.DodgerBlue : Color.Red;
         DrawLine(sb, pixel, tip.X, tip.Y, left.X, left.Y, c);
         DrawLine(sb, pixel, tip.X, tip.Y, right.X, right.Y, c);
 
