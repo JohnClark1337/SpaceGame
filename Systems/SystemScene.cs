@@ -481,7 +481,9 @@ public class SystemScene
         _waypointIndex = 0;
         if (_system.Station != null)
         {
-            _waypointTargets.Add((new Vector2(_station.X, _station.Y), _station.Name));
+            string stationLabel = _station.Name;
+            if (!StationIsHostile) stationLabel += " (Friendly)";
+            _waypointTargets.Add((new Vector2(_station.X, _station.Y), stationLabel));
         }
         _waypointPosition = _waypointTargets.Count > 0
             ? _waypointTargets[0].pos
@@ -631,7 +633,11 @@ public class SystemScene
             // Rebuild waypoint targets
             _waypointTargets.Clear();
             if (_system.Station != null && !TrainingMode)
-                _waypointTargets.Add((new Vector2(_station.X, _station.Y), _station.Name));
+            {
+                string stationLabel = _station.Name;
+                if (!StationIsHostile) stationLabel += " (Friendly)";
+                _waypointTargets.Add((new Vector2(_station.X, _station.Y), stationLabel));
+            }
             if (_game != null)
             {
                 foreach (var q in _game.Galaxy.ActiveQuests)
@@ -1609,11 +1615,19 @@ public class SystemScene
             {
                 // Market tab: Enter=buy, Backspace=sell
                 var economy = _game.Galaxy.Economy;
-                var resources = _game.Galaxy.AllResources
+                var allResources = _game.Galaxy.AllResources;
+                var stationResources = allResources
                     .Where(r => economy.HasResource(_system.Id, r.Id))
                     .OrderBy(r => r.Category)
                     .ThenBy(r => r.Name)
                     .ToList();
+                var playerResourceIds = _player.Resources.Select(r => r.Id).ToHashSet();
+                var playerOnlyResources = allResources
+                    .Where(r => !economy.HasResource(_system.Id, r.Id) && playerResourceIds.Contains(r.Id))
+                    .OrderBy(r => r.Category)
+                    .ThenBy(r => r.Name)
+                    .ToList();
+                var resources = stationResources.Concat(playerOnlyResources).ToList();
                 int marketItemCount = resources.Count + 2; // +1 energy canister, +1 fuel cell
                 if (downDocked)
                     _dockedMarketSelection = (_dockedMarketSelection + 1) % Math.Max(1, marketItemCount);
@@ -1640,7 +1654,8 @@ public class SystemScene
                     if (_dockedMarketSelection < resources.Count)
                     {
                         var res = resources[_dockedMarketSelection];
-                        economy.Buy(_player, _system.Id, res.Id, 1);
+                        if (economy.HasResource(_system.Id, res.Id))
+                            economy.Buy(_player, _system.Id, res.Id, 1);
                     }
                     else
                     {
@@ -3174,11 +3189,19 @@ public class SystemScene
         int textX, int textY, int panelW, int screenW, int screenH, int px, int py)
     {
         var economy = _game.Galaxy.Economy;
-        var resources = _game.Galaxy.AllResources
+        var allResources = _game.Galaxy.AllResources;
+        var stationResources = allResources
             .Where(r => economy.HasResource(_system.Id, r.Id))
             .OrderBy(r => r.Category)
             .ThenBy(r => r.Name)
             .ToList();
+        var playerResourceIds = _player.Resources.Select(r => r.Id).ToHashSet();
+        var playerOnlyResources = allResources
+            .Where(r => !economy.HasResource(_system.Id, r.Id) && playerResourceIds.Contains(r.Id))
+            .OrderBy(r => r.Category)
+            .ThenBy(r => r.Name)
+            .ToList();
+        var resources = stationResources.Concat(playerOnlyResources).ToList();
 
         DrawSpacedText(sb, titleFont, "--- Market ---",
             new Microsoft.Xna.Framework.Vector2(textX, textY), Color.Lime);
@@ -3217,8 +3240,9 @@ public class SystemScene
         {
             var r = resources[i];
             bool selected = i == _dockedMarketSelection;
-            int stock = economy.GetStock(_system.Id, r.Id);
-            int buyPrice = economy.GetBuyPrice(_system.Id, r.Id);
+            bool isStationResource = economy.HasResource(_system.Id, r.Id);
+            int stock = isStationResource ? economy.GetStock(_system.Id, r.Id) : 0;
+            int buyPrice = isStationResource ? economy.GetBuyPrice(_system.Id, r.Id) : 0;
             int sellPrice = economy.GetSellPrice(_system.Id, r.Id);
             var playerEntry = _player.Resources.FirstOrDefault(e => e.Id == r.Id);
             int playerQty = playerEntry?.Quantity ?? 0;
@@ -3238,6 +3262,7 @@ public class SystemScene
                     new Color(40, 50, 70));
 
             Color c = selected ? Color.White : Color.LightGray;
+            if (!isStationResource) c *= 0.7f;
 
             // Selection marker
             DrawSpacedText(sb, font, selected ? ">" : " ",
@@ -3248,9 +3273,17 @@ public class SystemScene
                 new Microsoft.Xna.Framework.Vector2(textX + cName, textY), c);
 
             // Buy price (green tint if affordable)
-            Color buyC = selected && _player.Credits >= buyPrice ? Color.Lime : c;
-            DrawSpacedText(sb, font, $"{buyPrice}cr",
-                new Microsoft.Xna.Framework.Vector2(textX + cBuy, textY), buyC);
+            if (isStationResource)
+            {
+                Color buyC = selected && _player.Credits >= buyPrice ? Color.Lime : c;
+                DrawSpacedText(sb, font, $"{buyPrice}cr",
+                    new Microsoft.Xna.Framework.Vector2(textX + cBuy, textY), buyC);
+            }
+            else
+            {
+                DrawSpacedText(sb, font, "---",
+                    new Microsoft.Xna.Framework.Vector2(textX + cBuy, textY), Color.Gray * 0.5f);
+            }
 
             // Sell price
             Color sellC = selected && playerQty > 0 ? Color.Orange : c;
@@ -3270,7 +3303,7 @@ public class SystemScene
             // Action hint
             if (selected)
             {
-                bool canBuy = _player.Credits >= buyPrice && _player.UsedCargo + r.Volume <= _player.CargoCapacity;
+                bool canBuy = isStationResource && _player.Credits >= buyPrice && _player.UsedCargo + r.Volume <= _player.CargoCapacity;
                 bool canSell = playerQty > 0;
                 string hint = "";
                 if (canBuy) hint += "[Enter] Buy  ";
@@ -3824,7 +3857,10 @@ public class SystemScene
             float ex = cx + e.Position.X * scale;
             float ey = cy + e.Position.Y * scale;
             if (ex >= mx - 2 && ex <= mx + mapSize + 2 && ey >= my - 2 && ey <= my + mapSize + 2)
-                FillCircle(sb, pixel, ex, ey, 2.5f, new Color(255, 140, 0));
+            {
+                bool isFriendly = e.Faction == "Atlas Federation" && _system.Hostility < 3;
+                FillCircle(sb, pixel, ex, ey, 2.5f, isFriendly ? Color.DodgerBlue : new Color(255, 140, 0));
+            }
         }
 
         // Asteroids on minimap (small white squares)
@@ -4519,8 +4555,15 @@ public class SystemScene
 
     private void UpdateEnemyAI(ref EnemyShip e, float dt)
     {
-        // In training mode, enemies target the friendly station instead of the player
-        Vector2 targetPos = (_trainingTargetPos.X != 0 || _trainingTargetPos.Y != 0) ? _trainingTargetPos : _player.Position;
+        // Friendly Federation ships patrol the station; others target the player (or training target)
+        bool isFriendlyFed = e.Faction == "Atlas Federation" && _system != null && _system.Hostility < 3;
+        Vector2 targetPos;
+        if (isFriendlyFed && !TrainingMode)
+            targetPos = new Vector2(_station.X, _station.Y);
+        else if (_trainingTargetPos.X != 0 || _trainingTargetPos.Y != 0)
+            targetPos = _trainingTargetPos;
+        else
+            targetPos = _player.Position;
         Vector2 toTarget = targetPos - e.Position;
         float distToPlayer = toTarget.Length();
         Vector2 dirToPlayer = distToPlayer > 0.01f ? toTarget.Normalized() : Vector2.Zero;
@@ -4573,9 +4616,6 @@ public class SystemScene
             if (e.Velocity.Length() < 5f)
                 e.Velocity = Vector2.Zero;
         }
-
-        // Friendly Federation ships in non-hostile systems don't attack the player
-        bool isFriendlyFed = e.Faction == "Atlas Federation" && _system != null && _system.Hostility < 3;
 
         switch (e.AiState)
         {

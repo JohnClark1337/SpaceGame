@@ -12,6 +12,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Remove="SpaceGameEditor\**" />
+    <EmbeddedResource Remove="SpaceGameEditor\**" />
+    <None Remove="SpaceGameEditor\**" />
+  </ItemGroup>
+
+  <ItemGroup>
     <None Include="Data\*.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>

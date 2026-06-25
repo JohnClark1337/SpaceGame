@@ -102,6 +102,7 @@ public class Game1 : Game
     private string _invMsgText = "";
     private float _invMsgTimer;
     private int _priceScroll;
+    private int _controlsScroll;
     private bool _equipSelectMode;
     private int _equipSelectSlotIdx;
     private int _equipSelectCursor;
@@ -1131,7 +1132,10 @@ public class Game1 : Game
                     else if (_menuSelection == 3) // Training Mode
                         EnterTraining();
                     else if (_menuSelection == 4) // Controls
+                    {
                         _currentMenu = MenuType.Controls;
+                        _controlsScroll = 0;
+                    }
                     else if (_menuSelection == 5) // Quit
                         Exit();
                 }
@@ -1257,7 +1261,10 @@ public class Game1 : Game
                 else if (_menuSelection == 3) // Training Mode
                     EnterTraining();
                 else if (_menuSelection == 4) // Controls
+                {
                     _currentMenu = MenuType.Controls;
+                    _controlsScroll = 0;
+                }
                 else if (_menuSelection == 5) // Quit
                     Exit();
             }
@@ -1269,6 +1276,12 @@ public class Game1 : Game
                 _currentMenu = MenuType.Pause;
                 _menuSelection = 4;
             }
+            bool ctrlUp = JustPressed(keyboard, Keys.Up) || JustPressed(keyboard, Keys.W);
+            bool ctrlDown = JustPressed(keyboard, Keys.Down) || JustPressed(keyboard, Keys.S);
+            if (ctrlUp) _controlsScroll--;
+            if (ctrlDown) _controlsScroll++;
+            if (_controlsScroll < 0) _controlsScroll = 0;
+            if (_controlsScroll > 16) _controlsScroll = 16;
         }
         else if (_currentMenu == MenuType.SystemInfo)
         {
@@ -2325,15 +2338,41 @@ public class Game1 : Game
                 "  Up / W        Select route up",
                 "  Down / S      Select route down",
                 "  Enter         Travel along selected route",
-                "  E             Enter system (at docked system)",
+                "  E             Enter system",
                 "",
-                "System View",
+                "System View (Flight)",
                 "  W / Up        Thrust forward",
                 "  S / Down      Thrust backward",
                 "  A / Left      Rotate left",
                 "  D / Right     Rotate right",
                 "  Shift         Boost",
-                "  E             Dock / Undock",
+                "  E             Dock / Undock / Interact",
+                "  F             Fire primary weapon",
+                "  Space         Auto-fire (hold)",
+                "  1 Key         Weapon 1 (Cannon)",
+                "  2 Key         Weapon 2 (Laser)",
+                "  3 Key         Weapon 3 (Missile)",
+                "  Tab           Target nearest enemy",
+                "  R             Repair",
+                "  C             Use Energy Canister",
+                "  O             Cycle combat target",
+                "  N             Target nearest enemy",
+                "",
+                "System View (Docked)",
+                "  Up / W        Navigate up",
+                "  Down / S      Navigate down",
+                "  Enter         Buy / Select",
+                "  Back          Sell",
+                "  U             Upgrade shop",
+                "  ESC           Undock",
+                "",
+                "Training Mode",
+                "  F1            Spawn menu",
+                "  Up / W        Navigate spawn menu",
+                "  Down / S      Navigate spawn menu",
+                "  Enter         Spawn selected ship",
+                "  Y             Sacrifice health",
+                "  ESC           Pause / Resume",
                 "",
                 "General",
                 "  ESC           Pause menu / Back",
@@ -2341,21 +2380,25 @@ public class Game1 : Game
                 "  G             Galaxy map",
                 "  I             Inventory",
                 "  Q             Quest log",
+                "  F5            Quick save",
+                "  F9            Quick load",
             };
 
             float lx = (ScreenWidth - 500) / 2f;
-            float ly = 80;
+            float ly = 80 - _controlsScroll * 20;
             foreach (var line in lines)
             {
                 bool isHeader = line.Length > 0 && line[0] != ' ';
                 Color c = isHeader ? new Color(255, 200, 100) : Color.Gray * 0.9f;
-                DrawSpacedText(_font, line,
-                    new Microsoft.Xna.Framework.Vector2(lx, ly), c);
+                if (ly + 20 > 20 && ly < ScreenHeight)
+                    DrawSpacedText(_font, line,
+                        new Microsoft.Xna.Framework.Vector2(lx, ly), c);
                 ly += isHeader ? 24 : 20;
             }
 
-            DrawSpacedText(_font, "[ESC] Back",
-                new Microsoft.Xna.Framework.Vector2(ScreenWidth - 120, ScreenHeight - 30),
+            string scrollHint = _controlsScroll > 0 ? " [Up] Scroll up" : "";
+            DrawSpacedText(_font, $"[ESC] Back{scrollHint}  [Down] Scroll down",
+                new Microsoft.Xna.Framework.Vector2(ScreenWidth - 280, ScreenHeight - 30),
                 Color.Gray * 0.6f);
         }
     }

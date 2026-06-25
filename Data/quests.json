@@ -50,7 +50,7 @@
       "targetItem": "princess_lifepod",
       "targetCount": 1,
       "rewardCredits": 300,
-      "rewardEquipment": "efficient_engine",
+      "rewardEquipment": "efficient_engine_mk1",
       "giverSystem": "proxima"
     }
   ]

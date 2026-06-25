@@ -44,6 +44,10 @@ public class Galaxy
         if (!string.IsNullOrEmpty(systemsJson))
             Systems = JsonSerializer.Deserialize<SystemsData>(systemsJson, JsonOpts)?.Systems ?? new();
 
+        foreach (var sys in Systems)
+            if (sys.Station == null)
+                sys.Station = new StationData { Name = $"{sys.Name} Station", OrbitRadius = 4000, OrbitSpeed = 0.001f, DefenseLevel = 1 };
+
         string questsJson = LoadJson("quests.json");
         if (!string.IsNullOrEmpty(questsJson))
             AllQuests = JsonSerializer.Deserialize<QuestsData>(questsJson, JsonOpts)?.Quests ?? new();
