@@ -48,7 +48,7 @@ public class SpawnEditorDialog : Form
         _cmbQuestStatus.AddTo(this);
         y += 32;
 
-        new Label { Text = "Ships:", Location = new(12, y + 3), Size = new(100, 20) }.AddTo(this);
+        new Label { Text = "Ships/Objects:", Location = new(12, y + 3), Size = new(100, 20) }.AddTo(this);
         _dgvShips = new DataGridView
         {
             Location = new(12, y + 22),
@@ -68,11 +68,11 @@ public class SpawnEditorDialog : Form
         _dgvShips.AddTo(this);
         y += 188;
 
-        _btnAddShip = new Button { Text = "Add Ship", Location = new(12, y), Size = new(80, 26) };
+        _btnAddShip = new Button { Text = "Add Ship/Object", Location = new(12, y), Size = new(110, 26) };
         _btnAddShip.AddTo(this);
         _btnAddShip.Click += (_, _) => AddShip();
 
-        _btnRemoveShip = new Button { Text = "Remove Ship", Location = new(100, y), Size = new(90, 26) };
+        _btnRemoveShip = new Button { Text = "Remove Ship", Location = new(130, y), Size = new(90, 26) };
         _btnRemoveShip.AddTo(this);
         _btnRemoveShip.Click += (_, _) => RemoveShip();
         y += 32;
@@ -149,18 +149,17 @@ public class SpawnEditorDialog : Form
 
 public class ShipEntryDialog : Form
 {
-    private readonly ComboBox _cmbType, _cmbAiState;
-    private readonly TextBox _txtFaction;
+    private readonly ComboBox _cmbType, _cmbAiState, _cmbFaction;
     private readonly NumericUpDown _numCount;
 
     public string Type => _cmbType.SelectedItem?.ToString() ?? "scout";
     public int Count => (int)_numCount.Value;
-    public string Faction => _txtFaction.Text.Trim();
+    public string Faction => _cmbFaction.SelectedItem?.ToString() ?? "";
     public string AiState => _cmbAiState.SelectedItem?.ToString() ?? "Orbit";
 
     public ShipEntryDialog()
     {
-        Text = "Add Ship";
+        Text = "Add Ship/Object";
         StartPosition = FormStartPosition.CenterParent;
         ClientSize = new Size(280, 180);
         FormBorderStyle = FormBorderStyle.FixedDialog;
@@ -168,7 +167,7 @@ public class ShipEntryDialog : Form
         int y = 12;
         new Label { Text = "Type:", Location = new(12, y + 3), Size = new(60, 20) }.AddTo(this);
         _cmbType = new ComboBox { Location = new(80, y), Size = new(170, 24), DropDownStyle = ComboBoxStyle.DropDownList };
-        _cmbType.Items.AddRange(["scout", "fighter", "gunship", "cruiser", "dreadnought", "interceptor", "missile_frigate", "destroyer", "battleship"]);
+        _cmbType.Items.AddRange(["scout", "fighter", "gunship", "cruiser", "dreadnought", "interceptor", "missile_frigate", "destroyer", "battleship", "escape_pod"]);
         _cmbType.SelectedIndex = 0;
         _cmbType.AddTo(this);
         y += 28;
@@ -179,7 +178,10 @@ public class ShipEntryDialog : Form
         y += 28;
 
         new Label { Text = "Faction:", Location = new(12, y + 3), Size = new(60, 20) }.AddTo(this);
-        _txtFaction = new TextBox { Location = new(80, y), Size = new(170, 24) }; _txtFaction.AddTo(this);
+        _cmbFaction = new ComboBox { Location = new(80, y), Size = new(170, 24), DropDownStyle = ComboBoxStyle.DropDownList };
+        _cmbFaction.Items.AddRange(["", "Atlas Federation", "Trigor Empire"]);
+        _cmbFaction.SelectedIndex = 0;
+        _cmbFaction.AddTo(this);
         y += 28;
 
         new Label { Text = "AI State:", Location = new(12, y + 3), Size = new(60, 20) }.AddTo(this);

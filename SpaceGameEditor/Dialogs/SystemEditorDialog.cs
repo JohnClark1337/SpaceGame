@@ -4,7 +4,8 @@ namespace SpaceGameEditor.Dialogs;
 
 public class SystemEditorDialog : Form
 {
-    private TextBox _txtId = null!, _txtName = null!, _txtDesc = null!, _txtColor = null!, _txtFaction = null!;
+    private TextBox _txtId = null!, _txtName = null!, _txtDesc = null!, _txtColor = null!;
+    private ComboBox _cmbFaction = null!;
     private NumericUpDown _numX = null!, _numY = null!, _numRadius = null!, _numStarRadius = null!, _numHostility = null!;
     private CheckedListBox _lstServices = null!;
     private TextBox _txtStationName = null!;
@@ -86,7 +87,9 @@ public class SystemEditorDialog : Form
         y += 28;
 
         AddLabel(tab, "Faction:", 12, y, labelW);
-        _txtFaction = AddTextBox(tab, 120, y, 200);
+        _cmbFaction = new ComboBox { Location = new(120, y), Size = new(200, 24), DropDownStyle = ComboBoxStyle.DropDownList };
+        _cmbFaction.Items.AddRange(["", "Atlas Federation", "Trigor Empire"]);
+        _cmbFaction.AddTo(tab);
         y += 28;
 
         AddLabel(tab, "Description:", 12, y, labelW);
@@ -244,7 +247,7 @@ public class SystemEditorDialog : Form
         _numStarRadius.Value = (decimal)s.StarRadius;
         _txtColor.Text = s.Color;
         _numHostility.Value = s.Hostility;
-        _txtFaction.Text = s.Faction ?? "";
+        if (!string.IsNullOrEmpty(s.Faction)) _cmbFaction.SelectedItem = s.Faction;
         _txtDesc.Text = s.Description;
 
         _connectionIds.Clear();
@@ -315,7 +318,7 @@ public class SystemEditorDialog : Form
             Connections = new List<string>(_connectionIds),
             Services = services,
             Hostility = (int)_numHostility.Value,
-            Faction = string.IsNullOrWhiteSpace(_txtFaction.Text) ? null : _txtFaction.Text.Trim(),
+            Faction = string.IsNullOrWhiteSpace(_cmbFaction.SelectedItem?.ToString()) ? null : _cmbFaction.SelectedItem.ToString(),
             StarRadius = (float)_numStarRadius.Value,
             Planets = new List<PlanetData>(_planets),
             Station = new StationData

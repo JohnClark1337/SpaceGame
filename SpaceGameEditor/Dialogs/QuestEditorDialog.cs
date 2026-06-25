@@ -4,19 +4,29 @@ namespace SpaceGameEditor.Dialogs;
 
 public class QuestEditorDialog : Form
 {
-    private readonly TextBox _txtId, _txtName, _txtDesc, _txtTargetSys, _txtTargetItem, _txtGiver, _txtDefenseSys;
-    private readonly ComboBox _cmbObjType;
-    private readonly NumericUpDown _numTargetCount, _numRewardCredits;
-    private readonly TextBox _txtRewardUpgrade, _txtRewardEquip;
-    private readonly ListBox _lstReqResources;
-    private readonly Button _btnAddReq, _btnRemoveReq, _btnOk, _btnCancel;
+    private readonly TextBox _txtId, _txtName, _txtDesc;
+    private readonly ComboBox _cmbObjType, _cmbTargetSys, _cmbTargetItem, _cmbGiverSys, _cmbDefenseSys;
+    private readonly NumericUpDown _numTargetCount;
+    private readonly ListBox _lstRewards, _lstReqResources;
+    private readonly Button _btnAddReward, _btnRemoveReward, _btnAddReq, _btnRemoveReq, _btnOk, _btnCancel;
     private readonly Label _lblError;
+    private readonly List<string> _systemIds;
+    private readonly List<string> _upgradeIds;
+    private readonly List<string> _equipmentIds;
+    private readonly List<string> _resourceIds;
+    private List<(string Type, string Value)> _rewards = new();
     private Dictionary<string, int> _requiredResources = new();
 
     public QuestData? Quest { get; private set; }
 
-    public QuestEditorDialog(List<string> existingIds, QuestData? existing = null)
+    public QuestEditorDialog(List<string> existingIds, List<string> systemIds, List<string> targetItems,
+        List<string> upgradeIds, List<string> equipmentIds, List<string> resourceIds, QuestData? existing = null)
     {
+        _systemIds = systemIds;
+        _upgradeIds = upgradeIds;
+        _equipmentIds = equipmentIds;
+        _resourceIds = resourceIds;
+
         Text = existing != null ? "Edit Quest" : "Add Quest";
         StartPosition = FormStartPosition.CenterParent;
         ClientSize = new Size(520, 520);
@@ -47,11 +57,19 @@ public class QuestEditorDialog : Form
         y += 28;
 
         new Label { Text = "Target System:", Location = new(12, y + 3), Size = new(labelW, 20) }.AddTo(this);
-        _txtTargetSys = new TextBox { Location = new(140, y), Size = new(inputW, 24) }; _txtTargetSys.AddTo(this);
+        _cmbTargetSys = new ComboBox { Location = new(140, y), Size = new(inputW, 24), DropDownStyle = ComboBoxStyle.DropDownList };
+        _cmbTargetSys.Items.Add("");
+        foreach (var sid in systemIds) _cmbTargetSys.Items.Add(sid);
+        _cmbTargetSys.SelectedIndex = 0;
+        _cmbTargetSys.AddTo(this);
         y += 28;
 
         new Label { Text = "Target Item:", Location = new(12, y + 3), Size = new(labelW, 20) }.AddTo(this);
-        _txtTargetItem = new TextBox { Location = new(140, y), Size = new(inputW, 24) }; _txtTargetItem.AddTo(this);
+        _cmbTargetItem = new ComboBox { Location = new(140, y), Size = new(inputW, 24), DropDownStyle = ComboBoxStyle.DropDownList };
+        _cmbTargetItem.Items.Add("");
+        foreach (var ti in targetItems) _cmbTargetItem.Items.Add(ti);
+        _cmbTargetItem.SelectedIndex = 0;
+        _cmbTargetItem.AddTo(this);
         y += 28;
 
         new Label { Text = "Target Count:", Location = new(12, y + 3), Size = new(labelW, 20) }.AddTo(this);
@@ -59,25 +77,30 @@ public class QuestEditorDialog : Form
         _numTargetCount.AddTo(this);
         y += 28;
 
-        new Label { Text = "Reward Credits:", Location = new(12, y + 3), Size = new(labelW, 20) }.AddTo(this);
-        _numRewardCredits = new NumericUpDown { Location = new(140, y), Size = new(100, 24), Maximum = 999999 };
-        _numRewardCredits.AddTo(this);
-        y += 28;
-
         new Label { Text = "Giver System:", Location = new(12, y + 3), Size = new(labelW, 20) }.AddTo(this);
-        _txtGiver = new TextBox { Location = new(140, y), Size = new(inputW, 24) }; _txtGiver.AddTo(this);
+        _cmbGiverSys = new ComboBox { Location = new(140, y), Size = new(inputW, 24), DropDownStyle = ComboBoxStyle.DropDownList };
+        _cmbGiverSys.Items.Add("");
+        foreach (var sid in systemIds) _cmbGiverSys.Items.Add(sid);
+        _cmbGiverSys.SelectedIndex = 0;
+        _cmbGiverSys.AddTo(this);
         y += 28;
 
-        new Label { Text = "Reward Upgrade:", Location = new(12, y + 3), Size = new(labelW, 20) }.AddTo(this);
-        _txtRewardUpgrade = new TextBox { Location = new(140, y), Size = new(inputW, 24) }; _txtRewardUpgrade.AddTo(this);
-        y += 28;
-
-        new Label { Text = "Reward Equipment:", Location = new(12, y + 3), Size = new(labelW, 20) }.AddTo(this);
-        _txtRewardEquip = new TextBox { Location = new(140, y), Size = new(inputW, 24) }; _txtRewardEquip.AddTo(this);
-        y += 28;
+        // Rewards
+        new Label { Text = "Rewards:", Location = new(12, y + 3), Size = new(labelW, 20) }.AddTo(this);
+        _lstRewards = new ListBox { Location = new(140, y), Size = new(300, 60) };
+        _lstRewards.AddTo(this);
+        _btnAddReward = new Button { Text = "Add", Location = new(450, y), Size = new(50, 24) };
+        _btnAddReward.AddTo(this);
+        _btnRemoveReward = new Button { Text = "Del", Location = new(450, y + 28), Size = new(50, 24) };
+        _btnRemoveReward.AddTo(this);
+        y += 68;
 
         new Label { Text = "Defense System:", Location = new(12, y + 3), Size = new(labelW, 20) }.AddTo(this);
-        _txtDefenseSys = new TextBox { Location = new(140, y), Size = new(inputW, 24) }; _txtDefenseSys.AddTo(this);
+        _cmbDefenseSys = new ComboBox { Location = new(140, y), Size = new(inputW, 24), DropDownStyle = ComboBoxStyle.DropDownList };
+        _cmbDefenseSys.Items.Add("");
+        foreach (var sid in systemIds) _cmbDefenseSys.Items.Add(sid);
+        _cmbDefenseSys.SelectedIndex = 0;
+        _cmbDefenseSys.AddTo(this);
         y += 28;
 
         // Required Resources
@@ -94,13 +117,15 @@ public class QuestEditorDialog : Form
         _lblError.AddTo(this);
         y += 24;
 
-        _btnOk = new Button { Text = "OK", Location = new(320, y), Size = new(80, 30), DialogResult = DialogResult.OK };
+        _btnOk = new Button { Text = "OK", Location = new(320, y), Size = new(80, 30) };
         _btnOk.AddTo(this);
         _btnOk.Click += (_, _) => ValidateAndClose();
 
         _btnCancel = new Button { Text = "Cancel", Location = new(410, y), Size = new(80, 30), DialogResult = DialogResult.Cancel };
         _btnCancel.AddTo(this);
 
+        _btnAddReward.Click += (_, _) => AddReward();
+        _btnRemoveReward.Click += (_, _) => RemoveReward();
         _btnAddReq.Click += (_, _) => AddResource();
         _btnRemoveReq.Click += (_, _) => RemoveResource();
 
@@ -110,17 +135,43 @@ public class QuestEditorDialog : Form
             _txtName.Text = existing.Name;
             _txtDesc.Text = existing.Description;
             _cmbObjType.SelectedItem = existing.ObjectiveType;
-            _txtTargetSys.Text = existing.TargetSystem ?? "";
-            _txtTargetItem.Text = existing.TargetItem ?? "";
+            if (existing.TargetSystem != null) _cmbTargetSys.SelectedItem = existing.TargetSystem;
+            if (existing.TargetItem != null) _cmbTargetItem.SelectedItem = existing.TargetItem;
             _numTargetCount.Value = existing.TargetCount;
-            _numRewardCredits.Value = existing.RewardCredits;
-            _txtGiver.Text = existing.GiverSystem;
-            _txtRewardUpgrade.Text = existing.RewardUpgrade ?? "";
-            _txtRewardEquip.Text = existing.RewardEquipment ?? "";
-            _txtDefenseSys.Text = existing.RewardDefenseSystem ?? "";
+            if (!string.IsNullOrEmpty(existing.GiverSystem)) _cmbGiverSys.SelectedItem = existing.GiverSystem;
+            if (existing.RewardUpgrade != null) _rewards.Add(("Upgrade", existing.RewardUpgrade));
+            if (existing.RewardEquipment != null) _rewards.Add(("Equipment", existing.RewardEquipment));
+            if (existing.RewardCredits > 0) _rewards.Add(("Credits", existing.RewardCredits.ToString()));
+            if (!string.IsNullOrEmpty(existing.RewardDefenseSystem)) _cmbDefenseSys.SelectedItem = existing.RewardDefenseSystem;
             _requiredResources = new Dictionary<string, int>(existing.RequiredResources);
+            RefreshRewardsList();
             RefreshReqList();
         }
+    }
+
+    private void AddReward()
+    {
+        using var dlg = new RewardEntryDialog(_upgradeIds, _equipmentIds, _resourceIds, _systemIds,
+            _rewards.Select(r => $"{r.Type}:{r.Value}").ToHashSet());
+        if (dlg.ShowDialog(this) == DialogResult.OK)
+            _rewards.Add((dlg.RewardType, dlg.RewardValue));
+        RefreshRewardsList();
+    }
+
+    private void RemoveReward()
+    {
+        if (_lstRewards.SelectedIndex >= 0 && _lstRewards.SelectedIndex < _rewards.Count)
+        {
+            _rewards.RemoveAt(_lstRewards.SelectedIndex);
+            RefreshRewardsList();
+        }
+    }
+
+    private void RefreshRewardsList()
+    {
+        _lstRewards.Items.Clear();
+        foreach (var (type, value) in _rewards)
+            _lstRewards.Items.Add($"{type}: {value}");
     }
 
     private void AddResource()
@@ -154,24 +205,122 @@ public class QuestEditorDialog : Form
     {
         if (string.IsNullOrWhiteSpace(_txtId.Text)) { _lblError.Text = "ID is required."; return; }
         if (string.IsNullOrWhiteSpace(_txtName.Text)) { _lblError.Text = "Name is required."; return; }
+
+        int credits = 0;
+        string? upgrade = null, equipment = null;
+        foreach (var (type, value) in _rewards)
+        {
+            if (type == "Credits" && int.TryParse(value, out int c)) credits = c;
+            else if (type == "Upgrade") upgrade = value;
+            else if (type == "Equipment") equipment = value;
+        }
+
         Quest = new QuestData
         {
             Id = _txtId.Text.Trim(),
             Name = _txtName.Text.Trim(),
             Description = _txtDesc.Text.Trim(),
             ObjectiveType = _cmbObjType.SelectedItem?.ToString() ?? "travel",
-            TargetSystem = string.IsNullOrWhiteSpace(_txtTargetSys.Text) ? null : _txtTargetSys.Text.Trim(),
-            TargetItem = string.IsNullOrWhiteSpace(_txtTargetItem.Text) ? null : _txtTargetItem.Text.Trim(),
+            TargetSystem = string.IsNullOrWhiteSpace(_cmbTargetSys.SelectedItem?.ToString()) ? null : _cmbTargetSys.SelectedItem.ToString(),
+            TargetItem = string.IsNullOrWhiteSpace(_cmbTargetItem.SelectedItem?.ToString()) ? null : _cmbTargetItem.SelectedItem.ToString(),
             TargetCount = (int)_numTargetCount.Value,
-            RewardCredits = (int)_numRewardCredits.Value,
-            GiverSystem = _txtGiver.Text.Trim(),
-            RewardUpgrade = string.IsNullOrWhiteSpace(_txtRewardUpgrade.Text) ? null : _txtRewardUpgrade.Text.Trim(),
-            RewardEquipment = string.IsNullOrWhiteSpace(_txtRewardEquip.Text) ? null : _txtRewardEquip.Text.Trim(),
-            RewardDefenseSystem = string.IsNullOrWhiteSpace(_txtDefenseSys.Text) ? null : _txtDefenseSys.Text.Trim(),
+            RewardCredits = credits,
+            GiverSystem = _cmbGiverSys.SelectedItem?.ToString() ?? "",
+            RewardUpgrade = upgrade,
+            RewardEquipment = equipment,
+            RewardDefenseSystem = string.IsNullOrWhiteSpace(_cmbDefenseSys.SelectedItem?.ToString()) ? null : _cmbDefenseSys.SelectedItem.ToString(),
             RequiredResources = new Dictionary<string, int>(_requiredResources)
         };
         DialogResult = DialogResult.OK;
         Close();
+    }
+}
+
+public class RewardEntryDialog : Form
+{
+    private readonly ComboBox _cmbType, _cmbValue;
+    private readonly NumericUpDown _numCredits;
+    private readonly Panel _pnlValue;
+
+    public string RewardType => _cmbType.SelectedItem?.ToString() ?? "Credits";
+    public string RewardValue
+    {
+        get
+        {
+            if (RewardType == "Credits") return ((int)_numCredits.Value).ToString();
+            return _cmbValue.SelectedItem?.ToString() ?? "";
+        }
+    }
+
+    public RewardEntryDialog(List<string> upgradeIds, List<string> equipmentIds, List<string> resourceIds,
+        List<string> systemIds, HashSet<string> existing)
+    {
+        Text = "Add Reward";
+        StartPosition = FormStartPosition.CenterParent;
+        ClientSize = new Size(320, 160);
+        FormBorderStyle = FormBorderStyle.FixedDialog;
+
+        int y = 12;
+        new Label { Text = "Type:", Location = new(12, y + 3), Size = new(60, 20) }.AddTo(this);
+        _cmbType = new ComboBox { Location = new(80, y), Size = new(200, 24), DropDownStyle = ComboBoxStyle.DropDownList };
+        _cmbType.Items.AddRange(["Credits", "Upgrade", "Equipment"]);
+        _cmbType.SelectedIndex = 0;
+        _cmbType.AddTo(this);
+        y += 28;
+
+        new Label { Text = "Value:", Location = new(12, y + 3), Size = new(60, 20) }.AddTo(this);
+        _pnlValue = new Panel { Location = new(80, y), Size = new(200, 24) };
+        _pnlValue.AddTo(this);
+
+        _numCredits = new NumericUpDown { Location = new(0, 0), Size = new(120, 24), Maximum = 999999 };
+        _numCredits.AddTo(_pnlValue);
+
+        _cmbValue = new ComboBox { Location = new(0, 0), Size = new(200, 24), DropDownStyle = ComboBoxStyle.DropDownList };
+        _cmbValue.AddTo(_pnlValue);
+        _cmbValue.Visible = false;
+        y += 32;
+
+        var btnOk = new Button { Text = "OK", Location = new(120, y), Size = new(80, 30), DialogResult = DialogResult.OK };
+        btnOk.AddTo(this);
+        btnOk.Click += (_, _) =>
+        {
+            if (RewardType != "Credits" && string.IsNullOrWhiteSpace(RewardValue))
+            {
+                MessageBox.Show("Please select a value.");
+                DialogResult = DialogResult.None;
+                return;
+            }
+            string key = $"{RewardType}:{RewardValue}";
+            if (existing.Contains(key))
+            {
+                MessageBox.Show("This reward has already been added.");
+                DialogResult = DialogResult.None;
+                return;
+            }
+        };
+
+        var btnCancel = new Button { Text = "Cancel", Location = new(205, y), Size = new(80, 30), DialogResult = DialogResult.Cancel };
+        btnCancel.AddTo(this);
+
+        _cmbType.SelectedIndexChanged += (_, _) =>
+        {
+            bool isCredits = RewardType == "Credits";
+            _numCredits.Visible = isCredits;
+            _cmbValue.Visible = !isCredits;
+            _cmbValue.Items.Clear();
+            _cmbValue.Items.Add("");
+            if (!isCredits)
+            {
+                var items = RewardType switch
+                {
+                    "Upgrade" => upgradeIds,
+                    "Equipment" => equipmentIds,
+                    _ => new List<string>()
+                };
+                foreach (var item in items) _cmbValue.Items.Add(item);
+            }
+            _cmbValue.SelectedIndex = 0;
+        };
     }
 }
 

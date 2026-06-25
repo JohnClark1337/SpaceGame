@@ -1,20 +1,148 @@
 {
-  "resources": [
-    { "id": "h", "name": "Hydrogen", "symbol": "H", "category": "fuel", "description": "The most abundant element. Primary fuel for fusion reactors.", "basePrice": 4, "volume": 2 },
-    { "id": "he3", "name": "Helium-3", "symbol": "He-3", "category": "fuel", "description": "A rare isotope used in advanced fusion drives.", "basePrice": 35, "volume": 1 },
-    { "id": "c", "name": "Carbon", "symbol": "C", "category": "common", "description": "Allotrope-rich element used in composites and manufacturing.", "basePrice": 3, "volume": 3 },
-    { "id": "si", "name": "Silicon", "symbol": "Si", "category": "common", "description": "Essential for computer chips and solar panels.", "basePrice": 10, "volume": 2 },
-    { "id": "fe", "name": "Iron", "symbol": "Fe", "category": "metal", "description": "The backbone of starship hull construction.", "basePrice": 6, "volume": 3 },
-    { "id": "cu", "name": "Copper", "symbol": "Cu", "category": "metal", "description": "High-conductivity metal for wiring and power systems.", "basePrice": 12, "volume": 2 },
-    { "id": "al", "name": "Aluminum", "symbol": "Al", "category": "metal", "description": "Lightweight structural metal for ship frames.", "basePrice": 8, "volume": 3 },
-    { "id": "ti", "name": "Titanium", "symbol": "Ti", "category": "metal", "description": "High-strength alloy component for armor plating.", "basePrice": 22, "volume": 2 },
-    { "id": "li", "name": "Lithium", "symbol": "Li", "category": "industrial", "description": "Critical for high-capacity battery manufacturing.", "basePrice": 18, "volume": 1 },
-    { "id": "u", "name": "Uranium", "symbol": "U", "category": "fuel", "description": "Fissile material for older reactor designs and munitions.", "basePrice": 45, "volume": 1 },
-    { "id": "ag", "name": "Silver", "symbol": "Ag", "category": "precious", "description": "Precious metal used in advanced circuitry and optics.", "basePrice": 60, "volume": 1 },
-    { "id": "pt", "name": "Platinum", "symbol": "Pt", "category": "precious", "description": "Rare catalyst metal with high industrial demand.", "basePrice": 120, "volume": 1 },
-    { "id": "au", "name": "Gold", "symbol": "Au", "category": "precious", "description": "Corrosion-resistant precious metal for critical electronics.", "basePrice": 90, "volume": 1 },
-    { "id": "nd", "name": "Neodymium", "symbol": "Nd", "category": "rare", "description": "Rare-earth element essential for powerful magnets.", "basePrice": 75, "volume": 1 },
-    { "id": "missile_ammo", "name": "Missile Ammo", "symbol": "M", "category": "ammo", "description": "Standard guided missile munitions.", "basePrice": 25, "volume": 1 },
-    { "id": "fuel_cell", "name": "Fuel Cell", "symbol": "FC", "category": "fuel", "description": "A compact energy cell that can be refined into ship fuel.", "basePrice": 20, "volume": 1 }
+  "Resources": [
+    {
+      "Id": "h",
+      "Name": "Hydrogen",
+      "Symbol": "H",
+      "Category": "fuel",
+      "Description": "The most abundant element. Primary fuel for fusion reactors.",
+      "BasePrice": 4,
+      "Volume": 2
+    },
+    {
+      "Id": "he3",
+      "Name": "Helium-3",
+      "Symbol": "He-3",
+      "Category": "fuel",
+      "Description": "A rare isotope used in advanced fusion drives.",
+      "BasePrice": 35,
+      "Volume": 1
+    },
+    {
+      "Id": "c",
+      "Name": "Carbon",
+      "Symbol": "C",
+      "Category": "common",
+      "Description": "Allotrope-rich element used in composites and manufacturing.",
+      "BasePrice": 3,
+      "Volume": 3
+    },
+    {
+      "Id": "si",
+      "Name": "Silicon",
+      "Symbol": "Si",
+      "Category": "common",
+      "Description": "Essential for computer chips and solar panels.",
+      "BasePrice": 10,
+      "Volume": 2
+    },
+    {
+      "Id": "fe",
+      "Name": "Iron",
+      "Symbol": "Fe",
+      "Category": "metal",
+      "Description": "The backbone of starship hull construction.",
+      "BasePrice": 6,
+      "Volume": 3
+    },
+    {
+      "Id": "cu",
+      "Name": "Copper",
+      "Symbol": "Cu",
+      "Category": "metal",
+      "Description": "High-conductivity metal for wiring and power systems.",
+      "BasePrice": 12,
+      "Volume": 2
+    },
+    {
+      "Id": "al",
+      "Name": "Aluminum",
+      "Symbol": "Al",
+      "Category": "metal",
+      "Description": "Lightweight structural metal for ship frames.",
+      "BasePrice": 8,
+      "Volume": 3
+    },
+    {
+      "Id": "ti",
+      "Name": "Titanium",
+      "Symbol": "Ti",
+      "Category": "metal",
+      "Description": "High-strength alloy component for armor plating.",
+      "BasePrice": 22,
+      "Volume": 2
+    },
+    {
+      "Id": "li",
+      "Name": "Lithium",
+      "Symbol": "Li",
+      "Category": "industrial",
+      "Description": "Critical for high-capacity battery manufacturing.",
+      "BasePrice": 18,
+      "Volume": 1
+    },
+    {
+      "Id": "u",
+      "Name": "Uranium",
+      "Symbol": "U",
+      "Category": "fuel",
+      "Description": "Fissile material for older reactor designs and munitions.",
+      "BasePrice": 45,
+      "Volume": 1
+    },
+    {
+      "Id": "ag",
+      "Name": "Silver",
+      "Symbol": "Ag",
+      "Category": "precious",
+      "Description": "Precious metal used in advanced circuitry and optics.",
+      "BasePrice": 60,
+      "Volume": 1
+    },
+    {
+      "Id": "pt",
+      "Name": "Platinum",
+      "Symbol": "Pt",
+      "Category": "precious",
+      "Description": "Rare catalyst metal with high industrial demand.",
+      "BasePrice": 120,
+      "Volume": 1
+    },
+    {
+      "Id": "au",
+      "Name": "Gold",
+      "Symbol": "Au",
+      "Category": "precious",
+      "Description": "Corrosion-resistant precious metal for critical electronics.",
+      "BasePrice": 90,
+      "Volume": 1
+    },
+    {
+      "Id": "nd",
+      "Name": "Neodymium",
+      "Symbol": "Nd",
+      "Category": "rare",
+      "Description": "Rare-earth element essential for powerful magnets.",
+      "BasePrice": 75,
+      "Volume": 1
+    },
+    {
+      "Id": "missile_ammo",
+      "Name": "Missile Ammo",
+      "Symbol": "M",
+      "Category": "ammo",
+      "Description": "Standard guided missile munitions.",
+      "BasePrice": 25,
+      "Volume": 1
+    },
+    {
+      "Id": "fuel_cell",
+      "Name": "Fuel Cell",
+      "Symbol": "FC",
+      "Category": "fuel",
+      "Description": "A compact energy cell that can be refined into ship fuel.",
+      "BasePrice": 20,
+      "Volume": 1
+    }
   ]
 }

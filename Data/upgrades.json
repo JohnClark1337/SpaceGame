@@ -1,40 +1,40 @@
 {
-  "upgrades": [
+  "Upgrades": [
     {
-      "id": "speed_boost",
-      "name": "Speed Boost Mk I",
-      "description": "Increases max velocity by 25%",
-      "effectType": "speed_mult",
-      "effectValue": 1.25,
-      "cost": 200,
-      "location": "vega"
+      "Id": "speed_boost",
+      "Name": "Speed Boost Mk I",
+      "Description": "Increases max velocity by 25%",
+      "EffectType": "speed_mult",
+      "EffectValue": 1.25,
+      "Cost": 200,
+      "Location": "vega"
     },
     {
-      "id": "handling_v1",
-      "name": "Thrust Vectoring",
-      "description": "Improves ship rotation rate by 30%",
-      "effectType": "handling",
-      "effectValue": 1.3,
-      "cost": 150,
-      "location": "alpha"
+      "Id": "handling_v1",
+      "Name": "Thrust Vectoring",
+      "Description": "Improves ship rotation rate by 30%",
+      "EffectType": "handling",
+      "EffectValue": 1.3,
+      "Cost": 150,
+      "Location": "alpha"
     },
     {
-      "id": "shield_v1",
-      "name": "Basic Shield Array",
-      "description": "Adds a protective shield that absorbs impacts",
-      "effectType": "shield",
-      "effectValue": 1.0,
-      "cost": 300,
-      "location": "draco"
+      "Id": "shield_v1",
+      "Name": "Basic Shield Array",
+      "Description": "Adds a protective shield that absorbs impacts",
+      "EffectType": "shield",
+      "EffectValue": 1,
+      "Cost": 300,
+      "Location": "draco"
     },
     {
-      "id": "cargo_v1",
-      "name": "Expanded Cargo Hold",
-      "description": "Doubles cargo capacity",
-      "effectType": "cargo",
-      "effectValue": 2.0,
-      "cost": 100,
-      "location": "cygnus"
+      "Id": "cargo_v1",
+      "Name": "Expanded Cargo Hold",
+      "Description": "Doubles cargo capacity",
+      "EffectType": "cargo",
+      "EffectValue": 2,
+      "Cost": 100,
+      "Location": "cygnus"
     }
   ]
 }

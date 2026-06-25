@@ -41,17 +41,17 @@ public class MainForm : Form
         _lblStatus = new Label { Dock = DockStyle.Bottom, Height = 24, Text = "Ready" };
         _lblStatus.AddTo(mainPanel);
 
-        RefreshAllGrids();
+        var menu = new MenuStrip();
+        var fileMenu = (ToolStripMenuItem)menu.Items.Add("&File");
+        var saveItem = new ToolStripMenuItem("&Save", null, (_, _) => SaveData());
+        saveItem.ShortcutKeys = Keys.Control | Keys.S;
+        fileMenu.DropDownItems.Add(saveItem);
+        fileMenu.DropDownItems.Add(new ToolStripSeparator());
+        fileMenu.DropDownItems.Add("E&xit", null, (_, _) => Close());
+        Controls.Add(menu);
+        MainMenuStrip = menu;
 
-        KeyPreview = true;
-        KeyDown += (_, e) =>
-        {
-            if (e.Control && e.KeyCode == Keys.S)
-            {
-                SaveData();
-                e.SuppressKeyPress = true;
-            }
-        };
+        RefreshAllGrids();
     }
 
     private void SaveData()
@@ -90,9 +90,12 @@ public class MainForm : Form
 
         RefreshGrid(_gridSpawns, _data.Spawns.Select(s => new
         {
-            s.SystemId, ShipCount = s.Ships.Count,
+            s.SystemId,
+            ShipsOrObjects = string.Join(", ", s.Ships.Select(sh => sh.Type)),
+            Count = s.Ships.Count,
             QuestCond = s.QuestCondition != null ? $"{s.QuestCondition.QuestId} ({s.QuestCondition.Status})" : ""
         }).ToList());
+        _gridSpawns.Columns["ShipsOrObjects"]!.HeaderText = "Ships/Objects";
 
         _lblStatus.Text = $"Loaded {_data.Systems.Count} systems, {_data.Quests.Count} quests, {_data.Equipment.Count} equipment, {_data.Resources.Count} resources, {_data.Upgrades.Count} upgrades, {_data.Spawns.Count} spawn entries";
     }
@@ -240,7 +243,12 @@ public class MainForm : Form
     private void AddQuest()
     {
         var ids = _data.Quests.Select(q => q.Id).ToList();
-        var dlg = new QuestEditorDialog(ids);
+        var sysIds = _data.Systems.Select(s => s.Id).ToList();
+        var upgradeIds = _data.Upgrades.Select(u => u.Id).ToList();
+        var equipmentIds = _data.Equipment.Select(e => e.Id).ToList();
+        var resourceIds = _data.Resources.Select(r => r.Id).ToList();
+        var targetItems = new List<string> { "escape_pod", "scout", "fighter", "gunship", "cruiser", "dreadnought", "interceptor", "missile_frigate", "destroyer", "battleship" };
+        var dlg = new QuestEditorDialog(ids, sysIds, targetItems, upgradeIds, equipmentIds, resourceIds);
         if (dlg.ShowDialog(this) == DialogResult.OK && dlg.Quest != null)
         {
             _data.Quests.Add(dlg.Quest);
@@ -253,7 +261,12 @@ public class MainForm : Form
         if (GetSelectedIndex(_gridQuests, out int idx))
         {
             var ids = _data.Quests.Where(q => q.Id != _data.Quests[idx].Id).Select(q => q.Id).ToList();
-            var dlg = new QuestEditorDialog(ids, _data.Quests[idx]);
+            var sysIds = _data.Systems.Select(s => s.Id).ToList();
+            var upgradeIds = _data.Upgrades.Select(u => u.Id).ToList();
+            var equipmentIds = _data.Equipment.Select(e => e.Id).ToList();
+            var resourceIds = _data.Resources.Select(r => r.Id).ToList();
+            var targetItems = new List<string> { "escape_pod", "scout", "fighter", "gunship", "cruiser", "dreadnought", "interceptor", "missile_frigate", "destroyer", "battleship" };
+            var dlg = new QuestEditorDialog(ids, sysIds, targetItems, upgradeIds, equipmentIds, resourceIds, _data.Quests[idx]);
             if (dlg.ShowDialog(this) == DialogResult.OK && dlg.Quest != null)
             {
                 _data.Quests[idx] = dlg.Quest;

@@ -1,0 +1,19 @@
+{
+  "Spawns": [
+    {
+      "SystemId": "proxima",
+      "Ships": [
+        {
+          "Type": "scout",
+          "Count": 3,
+          "Faction": "Trigor Empire",
+          "AiState": "Attack"
+        }
+      ],
+      "QuestCondition": {
+        "QuestId": "test_attack",
+        "Status": "active"
+      }
+    }
+  ]
+}

@@ -79,6 +79,7 @@ public class SystemScene
     private bool _nearPlanet;
     private bool _underAttack;
     private bool _initialized;
+    private readonly HashSet<string> _spawnedQuestIds = new();
     private float _temperature;
     private bool _exploding;
     private float _explosionTimer;
@@ -229,6 +230,7 @@ public class SystemScene
         _game = game;
         _initialized = false;
         _docked = false;
+        _spawnedQuestIds.Clear();
         _trainingPaused = false;
         _trainingInvincible = false;
         _showEnemyList = false;
@@ -558,6 +560,52 @@ public class SystemScene
         // Empire patrols in enemy territory
         if (!TrainingMode && (_system.Faction == "Trigor Empire" || _system.Hostility >= 3))
             SpawnEmpirePatrols();
+
+        // Quest-defined spawns
+        if (!TrainingMode)
+            SpawnQuestEnemies();
+    }
+
+    private void SpawnQuestEnemies()
+    {
+        var galaxy = _game?.Galaxy;
+        if (galaxy == null) return;
+
+        foreach (var sd in galaxy.Spawns)
+        {
+            if (sd.SystemId != _system.Id) continue;
+
+            if (sd.QuestCondition != null)
+            {
+                if (_spawnedQuestIds.Contains(sd.QuestCondition.QuestId)) continue;
+                var quest = galaxy.ActiveQuests.FirstOrDefault(q => q.Id == sd.QuestCondition.QuestId);
+                if (quest == null) continue;
+                _spawnedQuestIds.Add(sd.QuestCondition.QuestId);
+            }
+
+            foreach (var ship in sd.Ships)
+            {
+                string faction = ship.Faction;
+                AiState aiState = ship.AiState switch
+                {
+                    "Attack" => AiState.Attack,
+                    "Idle" => AiState.Idle,
+                    "Evade" => AiState.Evade,
+                    _ => AiState.Orbit
+                };
+
+                for (int i = 0; i < ship.Count; i++)
+                {
+                    float spawnAngle = RandF() * MathF.Tau;
+                    float spawnDist = 200f + RandF() * 400f;
+                    Vector2 pos = _player.Position + Vector2.FromAngle(spawnAngle) * spawnDist;
+                    float a = RandF() * MathF.Tau;
+                    _enemies.Add(MakeEnemyShip(ship.Type, pos,
+                        Vector2.FromAngle(a) * (80f + RandF() * 70f), a,
+                        aiState, 0f, spawnAngle, faction));
+                }
+            }
+        }
     }
 
     private static float RandF() { return (float)Random.Shared.NextDouble(); }
@@ -565,6 +613,9 @@ public class SystemScene
     public void Update(float dt, KeyboardState keyboard, MouseState mouse)
     {
         Initialize();
+
+        if (!TrainingMode && !_gameOver && !_exploding && !_docked)
+            SpawnQuestEnemies();
 
         KeyboardState prevKb = _prevKeyboard;
         float t = (float)_game.GameTime.TotalGameTime.TotalSeconds;
@@ -4490,6 +4541,7 @@ public class SystemScene
                     {
                         // Front destroyed = whole ship blows up
                         _enemyExplosions.Add(new EnemyExplosion { Position = e.Position, Timer = 0f, Duration = 0.8f });
+                        _game?.Galaxy?.RecordDestroyKill(_system.Id, e.Type);
                         _enemies.RemoveAt(index);
                         return;
                     }
@@ -4545,6 +4597,7 @@ public class SystemScene
         if (e.Health <= 0f)
         {
             _enemyExplosions.Add(new EnemyExplosion { Position = e.Position, Timer = 0f, Duration = 0.6f });
+            _game?.Galaxy?.RecordDestroyKill(_system.Id, e.Type);
             _enemies.RemoveAt(index);
         }
         else

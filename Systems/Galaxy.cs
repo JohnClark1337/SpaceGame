@@ -11,6 +11,7 @@ public class Galaxy
     public List<ResourceDef> AllResources { get; private set; } = new();
     public List<EquipmentDef> AllEquipment { get; private set; } = new();
     public List<ConsumableDef> AllConsumables { get; private set; } = new();
+    public List<SpawnDef> Spawns { get; private set; } = new();
     public List<QuestData> ActiveQuests { get; private set; } = new();
     public List<QuestData> AvailableQuests { get; private set; } = new();
     public Economy Economy { get; private set; } = null!;
@@ -64,6 +65,10 @@ public class Galaxy
         if (!string.IsNullOrEmpty(equipmentJson))
             AllEquipment = JsonSerializer.Deserialize<EquipmentData>(equipmentJson, JsonOpts)?.Equipment ?? new();
 
+        string spawnsJson = LoadJson("spawns.json");
+        if (!string.IsNullOrEmpty(spawnsJson))
+            Spawns = JsonSerializer.Deserialize<SpawnsData>(spawnsJson, JsonOpts)?.Spawns ?? new();
+
         AllConsumables = new List<ConsumableDef>
         {
             new ConsumableDef { Id = "energy_canister", Name = "Energy Canister", Description = "Refills 20% of max fuel", Cost = 50, EffectType = "fuel_refill", EffectValue = 0.2f, MinQuests = 0 },
@@ -111,6 +116,20 @@ public class Galaxy
             .ToList();
     }
 
+    private readonly Dictionary<string, int> _destroyKillCounts = new();
+
+    public void RecordDestroyKill(string systemId, string shipType)
+    {
+        foreach (var quest in ActiveQuests)
+        {
+            if (quest.ObjectiveType != "destroy") continue;
+            if (quest.TargetSystem != systemId) continue;
+            if (quest.TargetItem != shipType) continue;
+            _destroyKillCounts.TryGetValue(quest.Id, out int count);
+            _destroyKillCounts[quest.Id] = count + 1;
+        }
+    }
+
     public void AcceptQuest(string questId)
     {
         var quest = AvailableQuests.FirstOrDefault(q => q.Id == questId);
@@ -118,6 +137,8 @@ public class Galaxy
         {
             ActiveQuests.Add(quest);
             AvailableQuests.Remove(quest);
+            if (quest.ObjectiveType == "destroy")
+                _destroyKillCounts[quest.Id] = 0;
         }
     }
 
@@ -138,6 +159,11 @@ public class Galaxy
                     return false;
             }
             return true;
+        }
+        if (quest.ObjectiveType == "destroy")
+        {
+            _destroyKillCounts.TryGetValue(quest.Id, out int count);
+            return count >= quest.TargetCount;
         }
         return false;
     }
@@ -187,11 +213,15 @@ public class Galaxy
         foreach (var quest in ActiveQuests)
         {
             if (quest.ObjectiveType == "travel") continue;
+            if (quest.ObjectiveType == "destroy" && quest.TargetSystem != player.CurrentSystemId) continue;
             if (IsQuestObjectiveMet(quest, player))
                 toComplete.Add(quest);
         }
         foreach (var quest in toComplete)
+        {
+            _destroyKillCounts.Remove(quest.Id);
             CompleteQuest(quest, player);
+        }
     }
 
     public List<UpgradeData> GetAvailableUpgradesForSystem(string systemId, Player player) =>
