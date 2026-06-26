@@ -7,8 +7,8 @@ public class QuestEditorDialog : Form
     private readonly TextBox _txtId, _txtName, _txtDesc;
     private readonly ComboBox _cmbObjType, _cmbTargetSys, _cmbTargetItem, _cmbGiverSys, _cmbDefenseSys;
     private readonly NumericUpDown _numTargetCount;
-    private readonly ListBox _lstRewards, _lstReqResources;
-    private readonly Button _btnAddReward, _btnRemoveReward, _btnAddReq, _btnRemoveReq, _btnOk, _btnCancel;
+    private readonly ListBox _lstRewards, _lstReqResources, _lstDialogs;
+    private readonly Button _btnAddReward, _btnRemoveReward, _btnAddReq, _btnRemoveReq, _btnAddDialog, _btnRemoveDialog, _btnOk, _btnCancel;
     private readonly Label _lblError;
     private readonly List<string> _systemIds;
     private readonly List<string> _upgradeIds;
@@ -16,6 +16,7 @@ public class QuestEditorDialog : Form
     private readonly List<string> _resourceIds;
     private List<(string Type, string Value)> _rewards = new();
     private Dictionary<string, int> _requiredResources = new();
+    private List<QuestDialog> _dialogs = new();
 
     public QuestData? Quest { get; private set; }
 
@@ -29,7 +30,7 @@ public class QuestEditorDialog : Form
 
         Text = existing != null ? "Edit Quest" : "Add Quest";
         StartPosition = FormStartPosition.CenterParent;
-        ClientSize = new Size(520, 520);
+        ClientSize = new Size(520, 600);
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
         MinimizeBox = false;
@@ -113,6 +114,16 @@ public class QuestEditorDialog : Form
         _btnRemoveReq.AddTo(this);
         y += 68;
 
+        // Dialogs
+        new Label { Text = "Dialogs:", Location = new(12, y + 3), Size = new(labelW, 20) }.AddTo(this);
+        _lstDialogs = new ListBox { Location = new(140, y), Size = new(300, 60) };
+        _lstDialogs.AddTo(this);
+        _btnAddDialog = new Button { Text = "Add", Location = new(450, y), Size = new(50, 24) };
+        _btnAddDialog.AddTo(this);
+        _btnRemoveDialog = new Button { Text = "Del", Location = new(450, y + 28), Size = new(50, 24) };
+        _btnRemoveDialog.AddTo(this);
+        y += 68;
+
         _lblError = new Label { Text = "", ForeColor = Color.Red, Location = new(12, y), Size = new(480, 20) };
         _lblError.AddTo(this);
         y += 24;
@@ -128,6 +139,8 @@ public class QuestEditorDialog : Form
         _btnRemoveReward.Click += (_, _) => RemoveReward();
         _btnAddReq.Click += (_, _) => AddResource();
         _btnRemoveReq.Click += (_, _) => RemoveResource();
+        _btnAddDialog.Click += (_, _) => AddDialog();
+        _btnRemoveDialog.Click += (_, _) => RemoveDialog();
 
         if (existing != null)
         {
@@ -144,8 +157,16 @@ public class QuestEditorDialog : Form
             if (existing.RewardCredits > 0) _rewards.Add(("Credits", existing.RewardCredits.ToString()));
             if (!string.IsNullOrEmpty(existing.RewardDefenseSystem)) _cmbDefenseSys.SelectedItem = existing.RewardDefenseSystem;
             _requiredResources = new Dictionary<string, int>(existing.RequiredResources);
+            _dialogs = existing.Dialogs.Select(d => new QuestDialog
+            {
+                Id = d.Id,
+                Text = d.Text,
+                Speaker = d.Speaker,
+                Trigger = d.Trigger
+            }).ToList();
             RefreshRewardsList();
             RefreshReqList();
+            RefreshDialogsList();
         }
     }
 
@@ -201,6 +222,32 @@ public class QuestEditorDialog : Form
             _lstReqResources.Items.Add($"{kv.Key}: {kv.Value}");
     }
 
+    private void AddDialog()
+    {
+        using var dlg = new DialogEditorDialog();
+        if (dlg.ShowDialog(this) == DialogResult.OK && dlg.Dialog != null)
+        {
+            _dialogs.Add(dlg.Dialog);
+            RefreshDialogsList();
+        }
+    }
+
+    private void RemoveDialog()
+    {
+        if (_lstDialogs.SelectedIndex >= 0 && _lstDialogs.SelectedIndex < _dialogs.Count)
+        {
+            _dialogs.RemoveAt(_lstDialogs.SelectedIndex);
+            RefreshDialogsList();
+        }
+    }
+
+    private void RefreshDialogsList()
+    {
+        _lstDialogs.Items.Clear();
+        foreach (var d in _dialogs)
+            _lstDialogs.Items.Add($"[{d.Trigger}] {d.Id}{(d.Speaker.Length > 0 ? $" ({d.Speaker})" : "")}");
+    }
+
     private void ValidateAndClose()
     {
         if (string.IsNullOrWhiteSpace(_txtId.Text)) { _lblError.Text = "ID is required."; return; }
@@ -229,7 +276,14 @@ public class QuestEditorDialog : Form
             RewardUpgrade = upgrade,
             RewardEquipment = equipment,
             RewardDefenseSystem = string.IsNullOrWhiteSpace(_cmbDefenseSys.SelectedItem?.ToString()) ? null : _cmbDefenseSys.SelectedItem.ToString(),
-            RequiredResources = new Dictionary<string, int>(_requiredResources)
+            RequiredResources = new Dictionary<string, int>(_requiredResources),
+            Dialogs = _dialogs.Select(d => new QuestDialog
+            {
+                Id = d.Id,
+                Text = d.Text,
+                Speaker = d.Speaker,
+                Trigger = d.Trigger
+            }).ToList()
         };
         DialogResult = DialogResult.OK;
         Close();

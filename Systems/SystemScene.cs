@@ -68,8 +68,10 @@ public class SystemScene
     private int _dockedTab;
     private int _dockedQuestSelection;
     private int _dockedMarketSelection;
+    private int _dockedMarketScroll;
     private int _dockedUpgradeSelection;
     private int _dockedNewsScroll;
+    private int _dockedNewsSubTab;
     private float _dockedNewsScrollRepeat;
     private bool _dockedNewsScrollHeld;
     private bool _dockedNewsScrollDown;
@@ -1645,11 +1647,13 @@ public class SystemScene
                 return;
             }
 
+            // Main tab switching (always Left/Right)
             if (leftDocked)
             {
                 _dockedTab = (_dockedTab - 1 + 4) % 4;
                 _dockedQuestSelection = 0;
                 _dockedMarketSelection = 0;
+                _dockedMarketScroll = 0;
                 _dockedNewsScroll = 0;
             }
             if (rightDocked)
@@ -1657,7 +1661,25 @@ public class SystemScene
                 _dockedTab = (_dockedTab + 1) % 4;
                 _dockedQuestSelection = 0;
                 _dockedMarketSelection = 0;
+                _dockedMarketScroll = 0;
                 _dockedNewsScroll = 0;
+            }
+
+            // News sub-tab switching (Tab / Shift+Tab)
+            if (_dockedTab == 3)
+            {
+                bool tabPressed = keyboard.IsKeyDown(Keys.Tab) && _prevKeyboard.IsKeyUp(Keys.Tab);
+                bool shiftTabPressed = tabPressed && (keyboard.IsKeyDown(Keys.LeftShift) || keyboard.IsKeyDown(Keys.RightShift));
+                if (shiftTabPressed)
+                {
+                    _dockedNewsSubTab = (_dockedNewsSubTab - 1 + 4) % 4;
+                    _dockedNewsScroll = 0;
+                }
+                else if (tabPressed)
+                {
+                    _dockedNewsSubTab = (_dockedNewsSubTab + 1) % 4;
+                    _dockedNewsScroll = 0;
+                }
             }
 
             bool backDocked = keyboard.IsKeyDown(Keys.Back) && _prevKeyboard.IsKeyUp(Keys.Back);
@@ -1813,7 +1835,9 @@ public class SystemScene
                     {
                         if (_dockedQuestSelection < available.Count)
                         {
-                            _game.Galaxy.AcceptQuest(available[_dockedQuestSelection].Id);
+                            var accepted = available[_dockedQuestSelection];
+                            _game.Galaxy.AcceptQuest(accepted.Id);
+                            _game.ShowQuestDialogs(accepted, "on_accept");
                             _dockedQuestSelection = 0;
                         }
                         else
@@ -1821,7 +1845,9 @@ public class SystemScene
                             int ci = _dockedQuestSelection - available.Count;
                             if (ci < completable.Count)
                             {
-                                _game.Galaxy.CompleteQuest(completable[ci], _player);
+                                var completed = completable[ci];
+                                _game.Galaxy.CompleteQuest(completed, _player);
+                                _game.ShowQuestDialogs(completed, "on_complete");
                                 _dockedQuestSelection = 0;
                             }
                         }
@@ -3254,9 +3280,56 @@ public class SystemScene
             .ToList();
         var resources = stationResources.Concat(playerOnlyResources).ToList();
 
-        DrawSpacedText(sb, titleFont, "--- Market ---",
-            new Microsoft.Xna.Framework.Vector2(textX, textY), Color.Lime);
-        textY += 30;
+        int contentTop = textY;
+        int contentBottom = screenH - py - 40;
+        int contentH = contentBottom - contentTop;
+        int rowH = 20;
+
+        // Estimate total content height and clamp scroll
+        // Count category headers
+        var cats = new HashSet<string>();
+        foreach (var r in resources) cats.Add(r.Category ?? "");
+        int totalRows = resources.Count + cats.Count + 2 + 1; // resources + headers + canister + fuel cell + separator
+        int totalContentH = 30 + 22 + 6 + totalRows * rowH + 8 + 8; // header + rows + spacing
+        int maxScroll = Math.Max(0, totalContentH - contentH);
+        _dockedMarketScroll = Math.Min(_dockedMarketScroll, maxScroll);
+        if (_dockedMarketSelection == 0) _dockedMarketScroll = 0;
+
+        int listTop = textY + 30 + 22 + 6; // after header and column headers
+
+        // Adjust scroll to keep selected item visible
+        int selEstY = listTop;
+        if (_dockedMarketSelection < resources.Count)
+        {
+            string? cat = null;
+            int count = 0;
+            for (int i = 0; i <= _dockedMarketSelection; i++)
+            {
+                if (resources[i].Category != cat)
+                {
+                    cat = resources[i].Category;
+                    selEstY += rowH;
+                    count++;
+                }
+                if (i < _dockedMarketSelection)
+                    selEstY += rowH;
+            }
+            selEstY += rowH; // the selected item itself ends here
+        }
+        else
+        {
+            selEstY += (resources.Count + cats.Count) * rowH + 8 + 8;
+            int conIdx = _dockedMarketSelection - resources.Count;
+            selEstY += (conIdx + 1) * rowH; // canister or fuel cell row
+        }
+
+        if (selEstY - _dockedMarketScroll > contentBottom)
+            _dockedMarketScroll = selEstY - contentBottom;
+        if (selEstY - _dockedMarketScroll - rowH < listTop)
+            _dockedMarketScroll = Math.Max(0, selEstY - rowH - listTop);
+
+        int drawY = listTop - _dockedMarketScroll;
+        int headerY = textY;
 
         // Column positions
         int cSel = 0;
@@ -3267,25 +3340,29 @@ public class SystemScene
         int cCargo = 420;
         int cHint = 500;
 
-        // Header row background
+        bool inBounds(int y) => y + 20 > listTop && y < contentBottom;
+
+        DrawSpacedText(sb, titleFont, "--- Market ---",
+            new Microsoft.Xna.Framework.Vector2(textX, headerY), Color.Lime);
+        headerY += 30;
+
+        // Header row background (always visible)
         int headerH = 22;
-        sb.Draw(pixel, new Microsoft.Xna.Framework.Rectangle(textX, textY, panelW - 40, headerH),
+        sb.Draw(pixel, new Microsoft.Xna.Framework.Rectangle(textX, headerY, panelW - 40, headerH),
             new Color(30, 30, 60));
         DrawSpacedText(sb, font, "Item",
-            new Microsoft.Xna.Framework.Vector2(textX + cName, textY + 2), Color.Gold);
+            new Microsoft.Xna.Framework.Vector2(textX + cName, headerY + 2), Color.Gold);
         DrawSpacedText(sb, font, "Buy",
-            new Microsoft.Xna.Framework.Vector2(textX + cBuy, textY + 2), Color.Gold);
+            new Microsoft.Xna.Framework.Vector2(textX + cBuy, headerY + 2), Color.Gold);
         DrawSpacedText(sb, font, "Sell",
-            new Microsoft.Xna.Framework.Vector2(textX + cSell, textY + 2), Color.Gold);
+            new Microsoft.Xna.Framework.Vector2(textX + cSell, headerY + 2), Color.Gold);
         DrawSpacedText(sb, font, "Stock",
-            new Microsoft.Xna.Framework.Vector2(textX + cStock, textY + 2), Color.Gold);
+            new Microsoft.Xna.Framework.Vector2(textX + cStock, headerY + 2), Color.Gold);
         DrawSpacedText(sb, font, "Cargo",
-            new Microsoft.Xna.Framework.Vector2(textX + cCargo, textY + 2), Color.Gold);
-        sb.Draw(pixel, new Microsoft.Xna.Framework.Rectangle(textX, textY + headerH, panelW - 40, 1),
+            new Microsoft.Xna.Framework.Vector2(textX + cCargo, headerY + 2), Color.Gold);
+        sb.Draw(pixel, new Microsoft.Xna.Framework.Rectangle(textX, headerY + headerH, panelW - 40, 1),
             Color.Gold * 0.5f);
-        textY += headerH + 6;
 
-        int rowH = 20;
         string? lastCategory = null;
         for (int i = 0; i < resources.Count; i++)
         {
@@ -3302,124 +3379,132 @@ public class SystemScene
             if (r.Category != lastCategory)
             {
                 lastCategory = r.Category;
-                DrawSpacedText(sb, font, r.Category.ToUpper(),
-                    new Microsoft.Xna.Framework.Vector2(textX, textY), Color.Gray * 0.5f);
-                textY += rowH;
+                if (inBounds(drawY))
+                    DrawSpacedText(sb, font, r.Category.ToUpper(),
+                        new Microsoft.Xna.Framework.Vector2(textX, drawY), Color.Gray * 0.5f);
+                drawY += rowH;
             }
 
             // Row background for selected item
-            if (selected)
-                sb.Draw(pixel, new Microsoft.Xna.Framework.Rectangle(textX, textY, panelW - 40, rowH - 1),
+            bool vis = inBounds(drawY);
+
+            if (selected && vis)
+                sb.Draw(pixel, new Microsoft.Xna.Framework.Rectangle(textX, drawY, panelW - 40, rowH - 1),
                     new Color(40, 50, 70));
 
             Color c = selected ? Color.White : Color.LightGray;
             if (!isStationResource) c *= 0.7f;
 
-            // Selection marker
-            DrawSpacedText(sb, font, selected ? ">" : " ",
-                new Microsoft.Xna.Framework.Vector2(textX + cSel, textY), c);
-
-            // Name with symbol
-            DrawSpacedText(sb, font, $"[{r.Symbol}] {r.Name}",
-                new Microsoft.Xna.Framework.Vector2(textX + cName, textY), c);
-
-            // Buy price (green tint if affordable)
-            if (isStationResource)
+            if (vis)
             {
-                Color buyC = selected && _player.Credits >= buyPrice ? Color.Lime : c;
-                DrawSpacedText(sb, font, $"{buyPrice}cr",
-                    new Microsoft.Xna.Framework.Vector2(textX + cBuy, textY), buyC);
-            }
-            else
-            {
-                DrawSpacedText(sb, font, "---",
-                    new Microsoft.Xna.Framework.Vector2(textX + cBuy, textY), Color.Gray * 0.5f);
-            }
-
-            // Sell price
-            Color sellC = selected && playerQty > 0 ? Color.Orange : c;
-            DrawSpacedText(sb, font, $"{sellPrice}cr",
-                new Microsoft.Xna.Framework.Vector2(textX + cSell, textY), sellC);
-
-            // Stock
-            string stockStr = stock > 0 ? $"{stock}" : "-";
-            DrawSpacedText(sb, font, stockStr,
-                new Microsoft.Xna.Framework.Vector2(textX + cStock, textY), c);
-
-            // Player cargo
-            string cargoStr = playerQty > 0 ? $"{playerQty}" : "-";
-            DrawSpacedText(sb, font, cargoStr,
-                new Microsoft.Xna.Framework.Vector2(textX + cCargo, textY), c);
-
-            // Action hint
-            if (selected)
-            {
-                bool canBuy = isStationResource && _player.Credits >= buyPrice && _player.UsedCargo + r.Volume <= _player.CargoCapacity;
-                bool canSell = playerQty > 0;
-                string hint = "";
-                if (canBuy) hint += "[Enter] Buy  ";
-                if (canSell) hint += "[BkSp] Sell";
-                if (hint.Length > 0)
-                    DrawSpacedText(sb, font, hint.Trim(),
-                        new Microsoft.Xna.Framework.Vector2(textX + cHint, textY), Color.Lime * 0.7f);
+                DrawSpacedText(sb, font, selected ? ">" : " ",
+                    new Microsoft.Xna.Framework.Vector2(textX + cSel, drawY), c);
+                DrawSpacedText(sb, font, $"[{r.Symbol}] {r.Name}",
+                    new Microsoft.Xna.Framework.Vector2(textX + cName, drawY), c);
+                if (isStationResource)
+                {
+                    Color buyC = selected && _player.Credits >= buyPrice ? Color.Lime : c;
+                    DrawSpacedText(sb, font, $"{buyPrice}cr",
+                        new Microsoft.Xna.Framework.Vector2(textX + cBuy, drawY), buyC);
+                }
+                else
+                {
+                    DrawSpacedText(sb, font, "---",
+                        new Microsoft.Xna.Framework.Vector2(textX + cBuy, drawY), Color.Gray * 0.5f);
+                }
+                Color sellC = selected && playerQty > 0 ? Color.Orange : c;
+                DrawSpacedText(sb, font, $"{sellPrice}cr",
+                    new Microsoft.Xna.Framework.Vector2(textX + cSell, drawY), sellC);
+                string stockStr = stock > 0 ? $"{stock}" : "-";
+                DrawSpacedText(sb, font, stockStr,
+                    new Microsoft.Xna.Framework.Vector2(textX + cStock, drawY), c);
+                string cargoStr = playerQty > 0 ? $"{playerQty}" : "-";
+                DrawSpacedText(sb, font, cargoStr,
+                    new Microsoft.Xna.Framework.Vector2(textX + cCargo, drawY), c);
+                if (selected)
+                {
+                    bool canBuy = isStationResource && _player.Credits >= buyPrice && _player.UsedCargo + r.Volume <= _player.CargoCapacity;
+                    bool canSell = playerQty > 0;
+                    string hint = "";
+                    if (canBuy) hint += "[Enter] Buy  ";
+                    if (canSell) hint += "[BkSp] Sell";
+                    if (hint.Length > 0)
+                        DrawSpacedText(sb, font, hint.Trim(),
+                            new Microsoft.Xna.Framework.Vector2(textX + cHint, drawY), Color.Lime * 0.7f);
+                }
             }
 
-            textY += rowH;
+            drawY += rowH;
         }
 
         // Separator
-        textY += 8;
-        sb.Draw(pixel, new Microsoft.Xna.Framework.Rectangle(textX, textY, panelW - 40, 1), Color.Gray * 0.3f);
-        textY += 8;
+        drawY += 8;
+        if (inBounds(drawY))
+            sb.Draw(pixel, new Microsoft.Xna.Framework.Rectangle(textX, drawY, panelW - 40, 1), Color.Gray * 0.3f);
+        drawY += 8;
 
         // Energy canister row
         bool canBuyCan = _player.Credits >= 50 && _player.UsedCargo < _player.CargoCapacity;
         bool canSelected = _dockedMarketSelection == resources.Count;
         Color canColor = canSelected ? Color.White : Color.LightGray;
-        if (canSelected)
-            sb.Draw(pixel, new Microsoft.Xna.Framework.Rectangle(textX, textY, panelW - 40, rowH - 1),
+        bool canVis = inBounds(drawY);
+        if (canSelected && canVis)
+            sb.Draw(pixel, new Microsoft.Xna.Framework.Rectangle(textX, drawY, panelW - 40, rowH - 1),
                 new Color(40, 50, 70));
-        DrawSpacedText(sb, font, canSelected ? ">" : " ",
-            new Microsoft.Xna.Framework.Vector2(textX + cSel, textY), canColor);
-        DrawSpacedText(sb, font, "[Energy Canister]",
-            new Microsoft.Xna.Framework.Vector2(textX + cName, textY), canColor);
-        DrawSpacedText(sb, font, "50cr",
-            new Microsoft.Xna.Framework.Vector2(textX + cBuy, textY), canSelected && canBuyCan ? Color.Lime : canColor);
-        DrawSpacedText(sb, font, "---",
-            new Microsoft.Xna.Framework.Vector2(textX + cSell, textY), Color.Gray * 0.5f);
-        DrawSpacedText(sb, font, "---",
-            new Microsoft.Xna.Framework.Vector2(textX + cStock, textY), Color.Gray * 0.5f);
+        if (canVis)
+        {
+            DrawSpacedText(sb, font, canSelected ? ">" : " ",
+                new Microsoft.Xna.Framework.Vector2(textX + cSel, drawY), canColor);
+            DrawSpacedText(sb, font, "[Energy Canister]",
+                new Microsoft.Xna.Framework.Vector2(textX + cName, drawY), canColor);
+            DrawSpacedText(sb, font, "50cr",
+                new Microsoft.Xna.Framework.Vector2(textX + cBuy, drawY), canSelected && canBuyCan ? Color.Lime : canColor);
+            DrawSpacedText(sb, font, "---",
+                new Microsoft.Xna.Framework.Vector2(textX + cSell, drawY), Color.Gray * 0.5f);
+            DrawSpacedText(sb, font, "---",
+                new Microsoft.Xna.Framework.Vector2(textX + cStock, drawY), Color.Gray * 0.5f);
+        }
         int canQty = _player.Consumables.FirstOrDefault(c => c.Id == "energy_canister")?.Quantity ?? 0;
-        DrawSpacedText(sb, font, canQty > 0 ? $"{canQty}" : "-",
-            new Microsoft.Xna.Framework.Vector2(textX + cCargo, textY), canColor);
-        if (canSelected && canBuyCan)
-            DrawSpacedText(sb, font, "[Enter] Buy",
-                new Microsoft.Xna.Framework.Vector2(textX + cHint, textY), Color.Lime * 0.7f);
-        textY += rowH;
+        if (canVis)
+        {
+            DrawSpacedText(sb, font, canQty > 0 ? $"{canQty}" : "-",
+                new Microsoft.Xna.Framework.Vector2(textX + cCargo, drawY), canColor);
+            if (canSelected && canBuyCan)
+                DrawSpacedText(sb, font, "[Enter] Buy",
+                    new Microsoft.Xna.Framework.Vector2(textX + cHint, drawY), Color.Lime * 0.7f);
+        }
+        drawY += rowH;
 
         // Fuel cell row
         bool canBuyFC = _player.Credits >= 25 && _player.UsedCargo < _player.CargoCapacity;
         bool fcSelected = _dockedMarketSelection == resources.Count + 1;
         Color fcColor = fcSelected ? Color.White : Color.LightGray;
-        if (fcSelected)
-            sb.Draw(pixel, new Microsoft.Xna.Framework.Rectangle(textX, textY, panelW - 40, rowH - 1),
+        bool fcVis = inBounds(drawY);
+        if (fcSelected && fcVis)
+            sb.Draw(pixel, new Microsoft.Xna.Framework.Rectangle(textX, drawY, panelW - 40, rowH - 1),
                 new Color(40, 50, 70));
-        DrawSpacedText(sb, font, fcSelected ? ">" : " ",
-            new Microsoft.Xna.Framework.Vector2(textX + cSel, textY), fcColor);
-        DrawSpacedText(sb, font, "[Fuel Cell]",
-            new Microsoft.Xna.Framework.Vector2(textX + cName, textY), fcColor);
-        DrawSpacedText(sb, font, "25cr",
-            new Microsoft.Xna.Framework.Vector2(textX + cBuy, textY), fcSelected && canBuyFC ? Color.Lime : fcColor);
-        DrawSpacedText(sb, font, "---",
-            new Microsoft.Xna.Framework.Vector2(textX + cSell, textY), Color.Gray * 0.5f);
-        DrawSpacedText(sb, font, "---",
-            new Microsoft.Xna.Framework.Vector2(textX + cStock, textY), Color.Gray * 0.5f);
+        if (fcVis)
+        {
+            DrawSpacedText(sb, font, fcSelected ? ">" : " ",
+                new Microsoft.Xna.Framework.Vector2(textX + cSel, drawY), fcColor);
+            DrawSpacedText(sb, font, "[Fuel Cell]",
+                new Microsoft.Xna.Framework.Vector2(textX + cName, drawY), fcColor);
+            DrawSpacedText(sb, font, "25cr",
+                new Microsoft.Xna.Framework.Vector2(textX + cBuy, drawY), fcSelected && canBuyFC ? Color.Lime : fcColor);
+            DrawSpacedText(sb, font, "---",
+                new Microsoft.Xna.Framework.Vector2(textX + cSell, drawY), Color.Gray * 0.5f);
+            DrawSpacedText(sb, font, "---",
+                new Microsoft.Xna.Framework.Vector2(textX + cStock, drawY), Color.Gray * 0.5f);
+        }
         int fcQty = _player.Consumables.FirstOrDefault(c => c.Id == "fuel_cell")?.Quantity ?? 0;
-        DrawSpacedText(sb, font, fcQty > 0 ? $"{fcQty}" : "-",
-            new Microsoft.Xna.Framework.Vector2(textX + cCargo, textY), fcColor);
-        if (fcSelected && canBuyFC)
-            DrawSpacedText(sb, font, "[Enter] Buy",
-                new Microsoft.Xna.Framework.Vector2(textX + cHint, textY), Color.Lime * 0.7f);
+        if (fcVis)
+        {
+            DrawSpacedText(sb, font, fcQty > 0 ? $"{fcQty}" : "-",
+                new Microsoft.Xna.Framework.Vector2(textX + cCargo, drawY), fcColor);
+            if (fcSelected && canBuyFC)
+                DrawSpacedText(sb, font, "[Enter] Buy",
+                    new Microsoft.Xna.Framework.Vector2(textX + cHint, drawY), Color.Lime * 0.7f);
+        }
     }
 
     private void DrawUpgradesTab(SpriteBatch sb, Texture2D pixel, SpriteFont font, SpriteFont titleFont,
@@ -3584,12 +3669,58 @@ public class SystemScene
     private void DrawNewsTab(SpriteBatch sb, Texture2D pixel, SpriteFont font, SpriteFont titleFont,
         int textX, int textY, int panelW, int panelH, int screenW, int screenH, int px, int py)
     {
-        var articles = _game.Galaxy.NewsService.Articles;
+        var allArticles = _game.Galaxy.NewsService.Articles;
         int maxBodyW = panelW - 70;
 
         DrawSpacedText(sb, titleFont, "--- Galaxy News ---",
             new Microsoft.Xna.Framework.Vector2(textX, textY), Color.Lime);
         textY += 36;
+
+        // Sub-tab bar
+        string[] subTabs = { "Breaking", "Allied", "Neutral", "Hostile" };
+        Color[] subTabColors =
+        {
+            new Color(255, 60, 60),   // Breaking - red
+            new Color(100, 220, 100), // Allied - green
+            new Color(200, 200, 80),  // Neutral - yellow
+            new Color(255, 120, 60)   // Hostile - orange
+        };
+        int subTabX = textX;
+        int subTabPadding = 10;
+        for (int i = 0; i < subTabs.Length; i++)
+        {
+            Color tc = i == _dockedNewsSubTab ? subTabColors[i] : Color.Gray * 0.5f;
+            Color bg = i == _dockedNewsSubTab ? new Color(40, 40, 70) : Color.Transparent;
+            var sz = font.MeasureString(subTabs[i]);
+            int tabW = (int)sz.X + subTabPadding * 2;
+            sb.Draw(pixel, new Microsoft.Xna.Framework.Rectangle(subTabX, textY, tabW, (int)sz.Y + 6), bg);
+            DrawSpacedText(sb, font, subTabs[i],
+                new Microsoft.Xna.Framework.Vector2(subTabX + (tabW - (int)sz.X) / 2f, textY + 3), tc);
+            subTabX += tabW + 6;
+        }
+        textY += 36;
+
+        // Determine station faction for Allied/Hostile filtering
+        string stationFaction = _system.Faction ?? "";
+        string opposingFaction = stationFaction switch
+        {
+            "Atlas Federation" => "Trigor Empire",
+            "Trigor Empire" => "Atlas Federation",
+            _ => ""
+        };
+
+        // Filter articles by sub-tab
+        var articles = allArticles.Where(a =>
+        {
+            return _dockedNewsSubTab switch
+            {
+                0 => a.IsBreaking,
+                1 => !string.IsNullOrEmpty(a.Faction) && a.Faction == stationFaction,
+                2 => string.IsNullOrEmpty(a.Faction) || a.Faction == "Independent",
+                3 => !string.IsNullOrEmpty(opposingFaction) && a.Faction == opposingFaction,
+                _ => true
+            };
+        }).ToList();
 
         if (articles.Count == 0)
         {

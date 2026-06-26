@@ -16,6 +16,7 @@ public class Galaxy
     public List<QuestData> AvailableQuests { get; private set; } = new();
     public Economy Economy { get; private set; } = null!;
     public NewsService NewsService { get; private set; } = null!;
+    public List<Commander> Commanders { get; private set; } = new();
 
     public StarSystemData? CurrentSystem { get; set; }
     public StarSystemData? TargetSystem { get; set; }
@@ -85,6 +86,28 @@ public class Galaxy
             new ConsumableDef { Id = "repair_kit_ult", Name = "Ultimate Repair Kit", Description = "Restores 120 HP", Cost = 2000, EffectType = "repair_hp", EffectValue = 120f, MinQuests = 20 }
         };
 
+        Commanders = new List<Commander>
+        {
+            new Commander
+            {
+                Name = "Cyrus III",
+                Title = "Emperor of the Trigor Empire",
+                Faction = "Trigor Empire",
+                Personality = "Energetic, arrogant, sophisticated, bloodthirsty",
+                Backstory = "Cyrus III ascended the throne at age 28 after his father Cyrus II died of exhaustion. During the Great Famine that ravaged the Trigor systems the Federation pledged aid but delayed so long that billions starved before shipments arrived. His father rebuilt the Empire from the brink and Cyrus III now seeks vengeance — not just for the famine, but to impose a new galactic order that will never again allow bureaucratic complacency to cost lives.",
+                SpeechTics = "Speaks in flowery 18th/19th century aristocratic language. Uses elaborate metaphors, formal declarations, and grandiose phrasing. Frequently invokes honor, destiny, and the 'new order'."
+            },
+            new Commander
+            {
+                Name = "Ezara Loban",
+                Title = "Prime Minister of the Atlas Federation",
+                Faction = "Atlas Federation",
+                Personality = "Weak-willed, politically cunning, meek, desperate to save face",
+                Backstory = "Ezara Loban is serving his fifth term as Prime Minister, a feat achieved through careful compromise and avoidance of decisive action rather than visionary leadership. His wife exerts significant control over his administration, and he has grown accustomed to letting others take the blame. When crisis mounts his speech develops a stammer. He genuinely believes the Federation must stand against the Empire but lacks the fortitude to make the hard choices that would secure victory, instead hoping the problem will simply go away.",
+                SpeechTics = "Meek and evasive. Uses weasel words and passive construction to avoid commitment. When under pressure develops a slight stammer — repeats the first syllable of words (\"Th-the Federation stands firm\"). Talks about patriotism and defense but always sounds like he's reading a prepared statement."
+            }
+        };
+
         AvailableQuests = new List<QuestData>(AllQuests);
         Economy = new Economy(this);
         Economy.Initialize();
@@ -147,8 +170,9 @@ public class Galaxy
         if (quest.ObjectiveType == "travel" && quest.TargetSystem == player.CurrentSystemId)
             return true;
         if (quest.ObjectiveType == "collect" && quest.TargetItem != null &&
-            quest.TargetSystem == player.CurrentSystemId &&
-            player.QuestItems.Any(qi => qi.Id == quest.TargetItem))
+            player.QuestItems.Any(qi => qi.Id == quest.TargetItem) &&
+            (quest.TargetSystem == player.CurrentSystemId ||
+             quest.GiverSystem == player.CurrentSystemId))
             return true;
         if (quest.ObjectiveType == "deliver" && quest.TargetSystem == player.CurrentSystemId)
         {

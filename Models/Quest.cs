@@ -1,5 +1,13 @@
 namespace SpaceGame.Models;
 
+public class QuestDialog
+{
+    public string Id { get; set; } = "";
+    public string Text { get; set; } = "";
+    public string Speaker { get; set; } = "";
+    public string Trigger { get; set; } = "on_accept"; // on_accept, on_complete, on_enter_system
+}
+
 public class QuestData
 {
     public string Id { get; set; } = "";
@@ -15,6 +23,7 @@ public class QuestData
     public string? GiverSystem { get; set; }
     public string? RewardDefenseSystem { get; set; }
     public Dictionary<string, int> RequiredResources { get; set; } = new();
+    public List<QuestDialog> Dialogs { get; set; } = new();
 }
 
 public class QuestsData

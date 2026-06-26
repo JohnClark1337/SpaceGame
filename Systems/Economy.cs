@@ -31,7 +31,7 @@ public class Economy
                 {
                     float dailyProd = kv.Value;
                     float demand = sys.Economy.Demand.GetValueOrDefault(kv.Key, 1f);
-                    float startStock = dailyProd * 60f;
+                    float startStock = Math.Min(dailyProd * 15f, 200f);
                     market.Stocks[kv.Key] = startStock;
                     market.Demands[kv.Key] = demand;
                     market.ProductionRates[kv.Key] = dailyProd;
@@ -49,7 +49,7 @@ public class Economy
                 {
                     market.ProductionRates["missile_ammo"] = 5f;
                     market.Demands["missile_ammo"] = 1f;
-                    market.Stocks["missile_ammo"] = 300f;
+                    market.Stocks["missile_ammo"] = Math.Min(75f, 200f);
                 }
             }
 
@@ -131,7 +131,7 @@ public class Economy
             {
                 string resId = pkv.Key;
                 float rate = pkv.Value;
-                float cap = rate * 120f;
+                float cap = Math.Min(rate * 30f, 200f);
                 float current = market.Stocks.GetValueOrDefault(resId, 0f);
                 if (current < cap)
                 {

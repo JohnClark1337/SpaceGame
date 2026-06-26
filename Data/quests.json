@@ -13,7 +13,8 @@
       "RewardEquipment": null,
       "GiverSystem": "proxima",
       "RewardDefenseSystem": null,
-      "RequiredResources": {}
+      "RequiredResources": {},
+      "Dialogs": []
     },
     {
       "Id": "barnard_scan",
@@ -28,7 +29,8 @@
       "RewardEquipment": null,
       "GiverSystem": "alpha",
       "RewardDefenseSystem": null,
-      "RequiredResources": {}
+      "RequiredResources": {},
+      "Dialogs": []
     },
     {
       "Id": "vega_delivery",
@@ -43,7 +45,8 @@
       "RewardEquipment": null,
       "GiverSystem": "vega",
       "RewardDefenseSystem": null,
-      "RequiredResources": {}
+      "RequiredResources": {},
+      "Dialogs": []
     },
     {
       "Id": "tribune_mystery",
@@ -58,7 +61,8 @@
       "RewardEquipment": null,
       "GiverSystem": "barnard",
       "RewardDefenseSystem": null,
-      "RequiredResources": {}
+      "RequiredResources": {},
+      "Dialogs": []
     },
     {
       "Id": "rescue_princess",
@@ -73,22 +77,21 @@
       "RewardEquipment": "efficient_engine_mk1",
       "GiverSystem": "proxima",
       "RewardDefenseSystem": null,
-      "RequiredResources": {}
-    },
-    {
-      "Id": "test_attack",
-      "Name": "Pirate Attack",
-      "Description": "Pirates are attacking! Defend the system!",
-      "ObjectiveType": "destroy",
-      "TargetSystem": "proxima",
-      "TargetItem": "scout",
-      "TargetCount": 3,
-      "RewardCredits": 300,
-      "RewardUpgrade": null,
-      "RewardEquipment": null,
-      "GiverSystem": "proxima",
-      "RewardDefenseSystem": null,
-      "RequiredResources": {}
+      "RequiredResources": {},
+      "Dialogs": [
+        {
+          "Id": "princess_verna",
+          "Text": "My ship was destroyed by pirates! Please come and rescue me!",
+          "Speaker": "Princess Verna",
+          "Trigger": "on_accept"
+        },
+        {
+          "Id": "princess_verna_2",
+          "Text": "Thank you for rescuing me! My engineers have developed a new type of engine that may help you on your journey. Please accept it!",
+          "Speaker": "Princess Verna",
+          "Trigger": "on_complete"
+        }
+      ]
     }
   ]
 }

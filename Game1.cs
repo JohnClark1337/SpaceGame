@@ -36,6 +36,14 @@ public class Game1 : Game
     private const float AttackDuration = 60f;
     private readonly List<GalacticBroadcast> _pendingBroadcasts = new();
     private bool _showBroadcastDialog;
+    private int _lastNotifiedBroadcastCount;
+    private readonly Queue<QuestDialog> _questDialogQueue = new();
+    private bool _showQuestDialog;
+    private QuestDialog? _currentQuestDialog;
+    private List<string> _questDialogWrappedLines = new();
+    private int _questDialogScroll;
+    private int _broadcastScroll;
+    private int _broadcastTab; // 0=All, 1=Empire, 2=Federation
 
     public RouteManager RouteManager => _routeManager;
     public Galaxy Galaxy => _galaxy;
@@ -102,6 +110,8 @@ public class Game1 : Game
     private string _invMsgText = "";
     private float _invMsgTimer;
     private int _priceScroll;
+    private int _systemInfoScroll;
+    private int _systemInfoMaxScroll;
     private int _controlsScroll;
     private bool _equipSelectMode;
     private int _equipSelectSlotIdx;
@@ -116,6 +126,18 @@ public class Game1 : Game
 
     public List<QuestData> GetQuestsForSystem(string systemId) =>
         _galaxy.AvailableQuests.Where(q => q.GiverSystem == systemId).ToList();
+
+    public void ShowQuestDialogs(QuestData quest, string trigger)
+    {
+        foreach (var d in quest.Dialogs)
+            if (d.Trigger == trigger)
+                _questDialogQueue.Enqueue(d);
+        if (_questDialogQueue.Count > 0 && !_showQuestDialog)
+        {
+            _currentQuestDialog = _questDialogQueue.Dequeue();
+            _showQuestDialog = true;
+        }
+    }
 
     public void ExitToGalaxy()
     {
@@ -407,7 +429,7 @@ public class Game1 : Game
                 if (sys != null)
                 {
                     _galaxy.CurrentSystem = sys;
-                    _systemScene = new SystemScene(_player);
+        _systemScene = new SystemScene(_player);
                     _systemScene.EnterSystem(sys, this);
                     _viewMode = ViewMode.System;
                 }
@@ -543,6 +565,24 @@ public class Game1 : Game
             _galaxy.CurrentSystem = startSys;
         }
 
+        _pendingBroadcasts.Clear();
+        _pendingBroadcasts.Add(new GalacticBroadcast
+        {
+            Faction = "Trigor Empire",
+            CommanderName = "Emperor Cyrus III",
+            CommanderTitle = "Emperor of the Trigor Empire",
+            Message = "I, Cyrus III, Emperor of the Trigor Empire, do hereby declare that the age of Federation complacency has reached its end. The slow rot of bureaucratic indifference that starved billions shall be purged by fire and steel. A new order rises -- swift, absolute, and eternal.",
+            Timestamp = 0f
+        });
+        _pendingBroadcasts.Add(new GalacticBroadcast
+        {
+            Faction = "Atlas Federation",
+            CommanderName = "Prime Minister Ezara Loban",
+            CommanderTitle = "Prime Minister of the Atlas Federation",
+            Message = "Th-the Federation stands resolute. We urge calm and measured dialogue. There is always a diplomatic path. Our patrols have been... increased as a precaution. Citizens should go about their daily lives without undue concern.",
+            Timestamp = 0f
+        });
+
         base.Initialize();
     }
 
@@ -615,6 +655,60 @@ public class Game1 : Game
         {
             if (_overlay == Overlay.None && _currentMenu == MenuType.None)
                 _showQuestLog = !_showQuestLog;
+        }
+
+        if (_showQuestDialog)
+        {
+            if (JustPressed(keyboard, Keys.Enter) || JustPressed(keyboard, Keys.Escape) || JustPressed(keyboard, Keys.Space))
+            {
+                if (_questDialogQueue.Count > 0)
+                {
+                    _currentQuestDialog = _questDialogQueue.Dequeue();
+                    _questDialogScroll = 0;
+                }
+                else
+                {
+                    _showQuestDialog = false;
+                    _currentQuestDialog = null;
+                }
+            }
+            if (JustPressed(keyboard, Keys.Up))
+                _questDialogScroll = Math.Max(0, _questDialogScroll - 1);
+            if (JustPressed(keyboard, Keys.Down))
+                _questDialogScroll = Math.Min(_questDialogWrappedLines.Count - 1, _questDialogScroll + 1);
+            _prevKeyboard = keyboard;
+            _prevMouse = mouse;
+            base.Update(gameTime);
+            return;
+        }
+
+        // B key opens broadcast dialog (any view)
+        bool wasShowing = _showBroadcastDialog;
+        if (JustPressed(keyboard, Keys.B) && _pendingBroadcasts.Count > 0 && !_showBroadcastDialog)
+            _showBroadcastDialog = true;
+
+        if (_showBroadcastDialog)
+        {
+            if (JustPressed(keyboard, Keys.Escape) || (JustPressed(keyboard, Keys.B) && wasShowing))
+            {
+                _showBroadcastDialog = false;
+                _broadcastScroll = 0;
+            }
+            if (JustPressed(keyboard, Keys.Up))
+                _broadcastScroll = Math.Max(0, _broadcastScroll - 22);
+            if (JustPressed(keyboard, Keys.Down))
+                _broadcastScroll += 22;
+            if (JustPressed(keyboard, Keys.Tab))
+            {
+                if (keyboard.IsKeyDown(Keys.LeftShift) || keyboard.IsKeyDown(Keys.RightShift))
+                    _broadcastTab = _broadcastTab == 0 ? 2 : _broadcastTab - 1;
+                else
+                    _broadcastTab = (_broadcastTab + 1) % 3;
+            }
+            _prevKeyboard = keyboard;
+            _prevMouse = mouse;
+            base.Update(gameTime);
+            return;
         }
 
         if (_overlay != Overlay.None)
@@ -842,6 +936,7 @@ public class Game1 : Game
                         _currentMenu = MenuType.SystemInfo;
                         _menuSelection = 0;
                         _priceScroll = 0;
+                        _systemInfoScroll = 0;
                         _overlay = Overlay.None;
                     }
                 }
@@ -894,6 +989,8 @@ public class Game1 : Game
                             _galaxy.CurrentSystem = destSys;
                             _galaxy.CheckQuestProgress(_player);
                             _galaxy.RefreshAvailableQuests(_player);
+                            foreach (var q in _galaxy.ActiveQuests)
+                                ShowQuestDialogs(q, "on_enter_system");
                             SetStatus($"Arrived at {destSys.Name}");
                             _galaxyPlayerPos = _player.Position;
                             _galaxyPlayerVel = Vector2.Zero;
@@ -1004,6 +1101,7 @@ public class Game1 : Game
                         _currentMenu = MenuType.SystemInfo;
                         _menuSelection = 0;
                         _priceScroll = 0;
+                        _systemInfoScroll = 0;
                     }
                 }
             }
@@ -1179,11 +1277,15 @@ public class Game1 : Game
                         {
                             int maxScroll = Math.Max(0, _galaxy.AllResources.Count - 5);
                             if (_priceScroll < maxScroll) _priceScroll++;
+                            else if (_systemInfoMaxScroll > 0) _systemInfoScroll = Math.Min(_systemInfoScroll + 22, _systemInfoMaxScroll);
                         }
+                        else if (_systemInfoMaxScroll > 0)
+                            _systemInfoScroll = Math.Min(_systemInfoScroll + 22, _systemInfoMaxScroll);
                     }
                     if (JustPressed(keyboard, Keys.Up) || JustPressed(keyboard, Keys.W))
                     {
-                        if (_priceScroll > 0) _priceScroll--;
+                        if (_systemInfoScroll > 0) _systemInfoScroll = Math.Max(0, _systemInfoScroll - 22);
+                        else if (_priceScroll > 0) _priceScroll--;
                     }
                 }
 
@@ -1212,6 +1314,13 @@ public class Game1 : Game
 
         if (_statusTimer > 0) _statusTimer -= dt;
 
+        if (_statusTimer <= 0f && _pendingBroadcasts.Count > _lastNotifiedBroadcastCount && !_showBroadcastDialog)
+        {
+            _lastNotifiedBroadcastCount = _pendingBroadcasts.Count;
+            _statusMessage = "Galactic Broadcast Received! Press B to view";
+            _statusTimer = 6f;
+        }
+
         base.Update(gameTime);
     }
 
@@ -1225,18 +1334,6 @@ public class Game1 : Game
                 _menuSelection = 0;
                 return;
             }
-            if (JustPressed(keyboard, Keys.B))
-            {
-                if (_showBroadcastDialog)
-                    _showBroadcastDialog = false;
-                else if (_pendingBroadcasts.Count > 0)
-                    _showBroadcastDialog = true;
-            }
-        }
-        else if (_showBroadcastDialog)
-        {
-            if (JustPressed(keyboard, Keys.Escape) || JustPressed(keyboard, Keys.B))
-                _showBroadcastDialog = false;
         }
         else if (_currentMenu == MenuType.Pause)
         {
@@ -1290,6 +1387,7 @@ public class Game1 : Game
                 _currentMenu = MenuType.None;
                 _menuSelection = 0;
                 _priceScroll = 0;
+                _systemInfoScroll = 0;
             }
 
             if (JustPressed(keyboard, Keys.Tab))
@@ -1314,11 +1412,15 @@ public class Game1 : Game
                 {
                     int maxScroll = Math.Max(0, _galaxy.AllResources.Count - 5);
                     if (_priceScroll < maxScroll) _priceScroll++;
+                    else if (_systemInfoMaxScroll > 0) _systemInfoScroll = Math.Min(_systemInfoScroll + 22, _systemInfoMaxScroll);
                 }
+                else if (_systemInfoMaxScroll > 0)
+                    _systemInfoScroll = Math.Min(_systemInfoScroll + 22, _systemInfoMaxScroll);
             }
             if (JustPressed(keyboard, Keys.Up) || JustPressed(keyboard, Keys.W))
             {
-                if (_priceScroll > 0) _priceScroll--;
+                if (_systemInfoScroll > 0) _systemInfoScroll = Math.Max(0, _systemInfoScroll - 22);
+                else if (_priceScroll > 0) _priceScroll--;
             }
         }
         else if (_currentMenu == MenuType.UpgradeShop)
@@ -1354,6 +1456,7 @@ public class Game1 : Game
             {
                 _currentMenu = MenuType.SystemInfo;
                 _priceScroll = 0;
+                _systemInfoScroll = 0;
             }
         }
         else if (_currentMenu == MenuType.QuestBoard)
@@ -1367,6 +1470,7 @@ public class Game1 : Game
             {
                 _currentMenu = MenuType.SystemInfo;
                 _priceScroll = 0;
+                _systemInfoScroll = 0;
             }
         }
 
@@ -1451,7 +1555,12 @@ public class Game1 : Game
             DrawQuestLog();
 
         if (_showBroadcastDialog)
+        {
             DrawBroadcastDialog();
+        }
+
+        if (_showQuestDialog && _currentQuestDialog != null)
+            DrawQuestDialog();
 
         _spriteBatch.End();
 
@@ -2033,9 +2142,17 @@ public class Game1 : Game
         else if (_currentMenu == MenuType.SystemInfo && _menuSystem != null)
         {
             var sys = _menuSystem;
+            int scrollOffset = -_systemInfoScroll;
+
+            _spriteBatch.End();
+            var prevRect = _spriteBatch.GraphicsDevice.ScissorRectangle;
+            _spriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp,
+                null, new RasterizerState { ScissorTestEnable = true });
+            _spriteBatch.GraphicsDevice.ScissorRectangle = new Microsoft.Xna.Framework.Rectangle(
+                px + 1, py + 1, panelW - 2, panelH - 2);
 
             // System name
-            DrawSpacedText(_titleFont, sys.Name, new Microsoft.Xna.Framework.Vector2(textX, textY), ParseColor(sys.Color));
+            DrawSpacedText(_titleFont, sys.Name, new Microsoft.Xna.Framework.Vector2(textX, textY + scrollOffset), ParseColor(sys.Color));
             textY += 48;
 
             // Description (left side)
@@ -2043,33 +2160,33 @@ public class Game1 : Game
             var descLines = WordWrap(_font, sys.Description, descWidth);
             foreach (var line in descLines)
             {
-                DrawSpacedText(_font, line, new Microsoft.Xna.Framework.Vector2(textX, textY), Color.White * 0.8f);
+                DrawSpacedText(_font, line, new Microsoft.Xna.Framework.Vector2(textX, textY + scrollOffset), Color.White * 0.8f);
                 textY += 20;
             }
             textY += 8;
 
             // Faction
-            DrawSpacedText(_font, $"Faction: {sys.Faction ?? "None"}", new Microsoft.Xna.Framework.Vector2(textX, textY), Color.Cyan);
+            DrawSpacedText(_font, $"Faction: {sys.Faction ?? "None"}", new Microsoft.Xna.Framework.Vector2(textX, textY + scrollOffset), Color.Cyan);
             textY += 20;
-            DrawSpacedText(_font, $"Hostility Level: {sys.Hostility}/10", new Microsoft.Xna.Framework.Vector2(textX, textY),
+            DrawSpacedText(_font, $"Hostility Level: {sys.Hostility}/10", new Microsoft.Xna.Framework.Vector2(textX, textY + scrollOffset),
                 sys.Hostility > 3 ? Color.OrangeRed : Color.LimeGreen);
             textY += 20;
 
             if (_activeAttacks.ContainsKey(sys.Id))
             {
                 float pulse = MathF.Sin((float)_gameTime.TotalGameTime.TotalSeconds * 3f) * 0.2f + 0.8f;
-                DrawSpacedText(_font, "*** UNDER ATTACK ***", new Microsoft.Xna.Framework.Vector2(textX, textY),
+                DrawSpacedText(_font, "*** UNDER ATTACK ***", new Microsoft.Xna.Framework.Vector2(textX, textY + scrollOffset),
                     new Color(255, 120, 0) * pulse);
                 textY += 22;
             }
 
             if (sys.Services.Count > 0)
             {
-                DrawSpacedText(_font, "Services: " + string.Join(", ", sys.Services), new Microsoft.Xna.Framework.Vector2(textX, textY), Color.Yellow * 0.9f);
+                DrawSpacedText(_font, "Services: " + string.Join(", ", sys.Services), new Microsoft.Xna.Framework.Vector2(textX, textY + scrollOffset), Color.Yellow * 0.9f);
                 textY += 26;
             }
 
-            // Mini system map (bottom-right corner of panel)
+            // Mini system map (bottom-right corner of panel) — fixed position, NOT scrolled
             float mapCx = px + panelW - 105;
             float mapCy = py + panelH - 105;
             float mapR = 85;
@@ -2125,7 +2242,7 @@ public class Game1 : Game
                 int pageSize = 5;
 
                 DrawSpacedText(_font, "--- Market Prices vs Current ---",
-                    new Microsoft.Xna.Framework.Vector2(textX, textY), Color.Gold, scale);
+                    new Microsoft.Xna.Framework.Vector2(textX, textY + scrollOffset), Color.Gold, scale);
                 textY += (int)(26 * scale);
 
                 float col1 = textX;
@@ -2138,25 +2255,25 @@ public class Game1 : Game
 
                 // Header row
                 DrawSpacedText(_font, "Resource",
-                    new Microsoft.Xna.Framework.Vector2(col1, textY), Color.Gray * 0.7f, scale);
+                    new Microsoft.Xna.Framework.Vector2(col1, textY + scrollOffset), Color.Gray * 0.7f, scale);
                 DrawSpacedText(_font, "Selected (B/S)",
-                    new Microsoft.Xna.Framework.Vector2(col2 + 18, textY), Color.Gray * 0.7f, scale);
+                    new Microsoft.Xna.Framework.Vector2(col2 + 18, textY + scrollOffset), Color.Gray * 0.7f, scale);
                 DrawSpacedText(_font, "Current (B/S)",
-                    new Microsoft.Xna.Framework.Vector2(col3 + 18, textY), Color.Gray * 0.7f, scale);
+                    new Microsoft.Xna.Framework.Vector2(col3 + 18, textY + scrollOffset), Color.Gray * 0.7f, scale);
                 DrawSpacedText(_font, "Action",
-                    new Microsoft.Xna.Framework.Vector2(col4 + 18, textY), Color.Gray * 0.7f, scale);
+                    new Microsoft.Xna.Framework.Vector2(col4 + 18, textY + scrollOffset), Color.Gray * 0.7f, scale);
                 float headerY = textY;
                 textY += headerSize;
 
                 // Header separator
-                float hdrLine = textY - 4;
+                float hdrLine = textY + scrollOffset - 4;
                 DrawLine(col1, hdrLine, col1 + tableW, hdrLine, new Color(80, 80, 120) * 0.5f);
 
                 // Column separators
                 float sepBottom = textY + pageSize * lineH + 4;
-                DrawLine(col2 - 2, headerY - 2, col2 - 2, sepBottom, new Color(80, 80, 120) * 0.3f);
-                DrawLine(col3 - 2, headerY - 2, col3 - 2, sepBottom, new Color(80, 80, 120) * 0.3f);
-                DrawLine(col4 - 2, headerY - 2, col4 - 2, sepBottom, new Color(80, 80, 120) * 0.3f);
+                DrawLine(col2 - 2, headerY + scrollOffset - 2, col2 - 2, sepBottom + scrollOffset, new Color(80, 80, 120) * 0.3f);
+                DrawLine(col3 - 2, headerY + scrollOffset - 2, col3 - 2, sepBottom + scrollOffset, new Color(80, 80, 120) * 0.3f);
+                DrawLine(col4 - 2, headerY + scrollOffset - 2, col4 - 2, sepBottom + scrollOffset, new Color(80, 80, 120) * 0.3f);
 
                 var allRes = _galaxy.AllResources;
                 int total = allRes.Count;
@@ -2172,17 +2289,17 @@ public class Game1 : Game
                     int curSell = _galaxy.Economy.GetSellPrice(currentSys.Id, res.Id);
 
                     DrawSpacedText(_font, $"[{res.Symbol}] {res.Name}",
-                        new Microsoft.Xna.Framework.Vector2(col1, textY), Color.White * 0.7f, scale);
+                        new Microsoft.Xna.Framework.Vector2(col1, textY + scrollOffset), Color.White * 0.7f, scale);
 
                     string price = $"{hereBuy}/{hereSell}";
                     float pw = _font.MeasureString(price).X * scale;
                     DrawSpacedText(_font, price,
-                        new Microsoft.Xna.Framework.Vector2(col2 + (182 - pw) / 2f, textY), Color.White * 0.7f, scale);
+                        new Microsoft.Xna.Framework.Vector2(col2 + (182 - pw) / 2f, textY + scrollOffset), Color.White * 0.7f, scale);
 
                     string curPrice = $"{curBuy}/{curSell}";
                     float cw = _font.MeasureString(curPrice).X * scale;
                     DrawSpacedText(_font, curPrice,
-                        new Microsoft.Xna.Framework.Vector2(col3 + (182 - cw) / 2f, textY), Color.White * 0.7f, scale);
+                        new Microsoft.Xna.Framework.Vector2(col3 + (182 - cw) / 2f, textY + scrollOffset), Color.White * 0.7f, scale);
 
                     Color c = Color.White * 0.75f;
                     string hint = "";
@@ -2193,12 +2310,12 @@ public class Game1 : Game
                     {
                         float hw = _font.MeasureString(hint).X * scale;
                         DrawSpacedText(_font, hint,
-                            new Microsoft.Xna.Framework.Vector2(col4 + (40 - hw) / 2f, textY), c, scale);
+                            new Microsoft.Xna.Framework.Vector2(col4 + (40 - hw) / 2f, textY + scrollOffset), c, scale);
                     }
 
                     // Row separator
                     float rowLine = textY + lineH;
-                    DrawLine(col1, rowLine, col1 + tableW, rowLine, new Color(60, 60, 90) * 0.3f);
+                    DrawLine(col1, rowLine + scrollOffset, col1 + tableW, rowLine + scrollOffset, new Color(60, 60, 90) * 0.3f);
 
                     textY += lineH;
                 }
@@ -2208,7 +2325,7 @@ public class Game1 : Game
                 for (int i = drawn; i < pageSize; i++)
                 {
                     float rowLine = textY + lineH;
-                    DrawLine(col1, rowLine, col1 + tableW, rowLine, new Color(60, 60, 90) * 0.3f);
+                    DrawLine(col1, rowLine + scrollOffset, col1 + tableW, rowLine + scrollOffset, new Color(60, 60, 90) * 0.3f);
                     textY += lineH;
                 }
 
@@ -2220,8 +2337,8 @@ public class Game1 : Game
                     float thumbH = scrollBarH * pageSize / total;
                     float thumbY = textY - scrollBarH + _priceScroll * (scrollBarH - thumbH) / maxScroll;
 
-                    DrawLine(scrollBarX, textY - scrollBarH, scrollBarX, textY, new Color(60, 60, 100) * 0.5f);
-                    DrawRect(scrollBarX - 2, thumbY, 4, thumbH, new Color(120, 120, 180) * 0.7f);
+                    DrawLine(scrollBarX, textY - scrollBarH + scrollOffset, scrollBarX, textY + scrollOffset, new Color(60, 60, 100) * 0.5f);
+                    DrawRect(scrollBarX - 2, thumbY + scrollOffset, 4, thumbH, new Color(120, 120, 180) * 0.7f);
                 }
 
                 textY += 8;
@@ -2229,20 +2346,31 @@ public class Game1 : Game
             else if (currentSys != null && currentSys.Id == sys.Id)
             {
                 DrawSpacedText(_font, "-- Current system --",
-                    new Microsoft.Xna.Framework.Vector2(textX, textY), Color.Gray * 0.6f);
+                    new Microsoft.Xna.Framework.Vector2(textX, textY + scrollOffset), Color.Gray * 0.6f);
                 textY += 22;
             }
 
-            // Action items
+            _spriteBatch.End();
+            _spriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend);
+            _spriteBatch.GraphicsDevice.ScissorRectangle = prevRect;
+
+            // Compute max scroll so shortcuts are always visible
+            int shortcutAreaY = py + panelH - 50;
+            _systemInfoMaxScroll = Math.Max(0, textY - shortcutAreaY);
+            _systemInfoScroll = Math.Min(_systemInfoScroll, _systemInfoMaxScroll);
+
+            // Action items at fixed bottom position
+            float sx = px + 20;
+            float sy = shortcutAreaY;
             bool hasQuests = _galaxy.AvailableQuests.Any(q => q.GiverSystem == sys.Id);
             if (hasQuests)
             {
                 DrawSpacedText(_font, "[Tab] View Quests",
-                    new Microsoft.Xna.Framework.Vector2(textX, textY), Color.Gray);
-                textY += 22;
+                    new Microsoft.Xna.Framework.Vector2(sx, sy), Color.Gray);
+                sy += 22;
             }
             DrawSpacedText(_font, "[ESC] Close",
-                new Microsoft.Xna.Framework.Vector2(textX, textY), Color.Gray);
+                new Microsoft.Xna.Framework.Vector2(sx, sy), Color.Gray);
         }
         else if (_currentMenu == MenuType.UpgradeShop && _menuSystem != null)
         {
@@ -3159,7 +3287,8 @@ public class Game1 : Game
             _player.CurrentSystemId,
             _routeManager.BlockedRoutes,
             _routeManager.MaxBlocked,
-            _galaxy.ActiveQuests);
+            _galaxy.ActiveQuests,
+            _galaxy.Commanders);
 
         if (decision == null)
         {
@@ -3193,6 +3322,8 @@ public class Game1 : Game
             _pendingBroadcasts.Add(new GalacticBroadcast
             {
                 Faction = "Trigor Empire",
+                CommanderName = "Emperor Cyrus III",
+                CommanderTitle = "Emperor of the Trigor Empire",
                 Message = decision.EmpireBroadcast,
                 Timestamp = (float)_gameTime.TotalGameTime.TotalSeconds
             });
@@ -3204,6 +3335,8 @@ public class Game1 : Game
             _pendingBroadcasts.Add(new GalacticBroadcast
             {
                 Faction = "Atlas Federation",
+                CommanderName = "Prime Minister Ezara Loban",
+                CommanderTitle = "Prime Minister of the Atlas Federation",
                 Message = decision.FederationBroadcast,
                 Timestamp = (float)_gameTime.TotalGameTime.TotalSeconds
             });
@@ -3546,6 +3679,93 @@ public class Game1 : Game
             new Microsoft.Xna.Framework.Vector2(x, y), Color.White * alpha);
     }
 
+    private void DrawQuestDialog()
+    {
+        if (_currentQuestDialog == null) return;
+        int w = ScreenWidth;
+        int h = ScreenHeight;
+        float dialogW = 600f;
+        float dialogH = 300f;
+        float dx = (w - dialogW) / 2f;
+        float dy = (h - dialogH) / 2f;
+
+        _spriteBatch.Draw(_pixel, new Microsoft.Xna.Framework.Rectangle(0, 0, w, h),
+            new Color(0, 0, 0, 200));
+        _spriteBatch.Draw(_pixel, new Microsoft.Xna.Framework.Rectangle((int)dx, (int)dy, (int)dialogW, (int)dialogH),
+            new Color(10, 10, 30, 240));
+        DrawRect(dx, dy, dialogW, dialogH, new Color(80, 80, 140));
+
+        float textX = dx + 30f;
+        float textY = dy + 20f;
+        float maxTextW = dialogW - 60f;
+        float lineH = 22f;
+
+        if (!string.IsNullOrEmpty(_currentQuestDialog.Speaker))
+        {
+            DrawSpacedText(_titleFont, _currentQuestDialog.Speaker,
+                new Microsoft.Xna.Framework.Vector2(textX, textY), Color.Gold);
+            textY += 30f;
+        }
+
+        float topArea = textY;
+        float bottomArea = dy + dialogH - 35f;
+        int maxVisible = (int)((bottomArea - topArea) / lineH);
+
+        string msg = _currentQuestDialog.Text;
+        var words = msg.Split(' ');
+        _questDialogWrappedLines.Clear();
+        string line = "";
+        float lineW = 0f;
+        float spaceExtra = 8f;
+        foreach (var word in words)
+        {
+            float wordW = _font.MeasureString(word).X;
+            float testW = line.Length == 0 ? wordW : lineW + spaceExtra + wordW;
+            if (testW > maxTextW && line.Length > 0)
+            {
+                _questDialogWrappedLines.Add(line);
+                line = word;
+                lineW = wordW;
+            }
+            else
+            {
+                line = line.Length == 0 ? word : line + " " + word;
+                lineW = testW;
+            }
+        }
+        if (line.Length > 0)
+            _questDialogWrappedLines.Add(line);
+
+        _questDialogScroll = Math.Clamp(_questDialogScroll, 0,
+            Math.Max(0, _questDialogWrappedLines.Count - maxVisible));
+
+        int visibleLines = Math.Min(maxVisible, _questDialogWrappedLines.Count - _questDialogScroll);
+        float drawY = topArea;
+        for (int i = _questDialogScroll; i < _questDialogScroll + visibleLines; i++)
+        {
+            DrawSpacedText(_font, _questDialogWrappedLines[i],
+                new Microsoft.Xna.Framework.Vector2(textX, drawY), Color.White * 0.9f);
+            drawY += lineH;
+        }
+
+        if (_questDialogWrappedLines.Count > maxVisible)
+        {
+            float scrollBarH = (float)maxVisible / _questDialogWrappedLines.Count * (bottomArea - topArea);
+            float scrollY = topArea + (float)_questDialogScroll / _questDialogWrappedLines.Count * (bottomArea - topArea);
+            float scrollX = dx + dialogW - 8f;
+            _spriteBatch.Draw(_pixel, new Microsoft.Xna.Framework.Rectangle(
+                (int)scrollX, (int)topArea, 4, (int)(bottomArea - topArea)),
+                new Color(40, 40, 60));
+            _spriteBatch.Draw(_pixel, new Microsoft.Xna.Framework.Rectangle(
+                (int)scrollX, (int)scrollY, 4, (int)scrollBarH),
+                new Color(140, 140, 180));
+        }
+
+        DrawSpacedText(_font, "[Enter/ESC/Space] Continue" +
+            (_questDialogWrappedLines.Count > maxVisible ? " | Up/Down scroll" : ""),
+            new Microsoft.Xna.Framework.Vector2(dx + 20, dy + dialogH - 30f), Color.Gray * 0.7f);
+    }
+
     private void DrawBroadcastDialog()
     {
         int w = ScreenWidth;
@@ -3554,6 +3774,9 @@ public class Game1 : Game
         float dialogH = 400f;
         float dx = (w - dialogW) / 2f;
         float dy = (h - dialogH) / 2f;
+        float contentTop = dy + 60f;
+        float contentBottom = dy + dialogH - 40f;
+        float contentH = contentBottom - contentTop;
 
         // Dim background
         _spriteBatch.Draw(_pixel, new Microsoft.Xna.Framework.Rectangle(0, 0, w, h),
@@ -3568,64 +3791,174 @@ public class Game1 : Game
         DrawSpacedText(_titleFont, "GALACTIC BROADCAST",
             new Microsoft.Xna.Framework.Vector2(dx + 20, dy + 15), Color.Gold);
 
-        float textY = dy + 60f;
-        float textX = dx + 30f;
-        float maxTextW = dialogW - 60f;
+        // Tabs
+        string[] tabs = { "All", "Empire", "Federation" };
+        float tabW = dialogW / 3f;
+        float tabY = dy + 45f;
+        for (int i = 0; i < tabs.Length; i++)
+        {
+            Color tabColor = i == _broadcastTab ? Color.White : Color.Gray * 0.5f;
+            float tabX = dx + tabW * i;
+            float tw = _font.MeasureString(tabs[i]).X;
+            DrawSpacedText(_font, tabs[i], new Microsoft.Xna.Framework.Vector2(
+                tabX + (tabW - tw) / 2f, tabY), tabColor);
+            if (i < tabs.Length - 1)
+            {
+                float sepX = tabX + tabW;
+                DrawLine(sepX, tabY - 2f, sepX, tabY + 18f, Color.Gray * 0.3f);
+            }
+        }
+        DrawLine(dx, tabY + 20f, dx + dialogW, tabY + 20f, Color.Gray * 0.3f);
 
         if (_pendingBroadcasts.Count == 0)
         {
             DrawSpacedText(_font, "No broadcasts received.",
-                new Microsoft.Xna.Framework.Vector2(textX, textY), Color.Gray);
-            textY += 30f;
+                new Microsoft.Xna.Framework.Vector2(dx + 30f, contentTop), Color.Gray);
+            // Footer
+            DrawSpacedText(_font, "[ESC or B] Close",
+                new Microsoft.Xna.Framework.Vector2(dx + 20, dy + dialogH - 30f), Color.Gray * 0.7f);
+            return;
         }
-        else
-        {
-            foreach (var bc in _pendingBroadcasts)
-            {
-                // Faction header
-                Color factionColor = bc.Faction == "Trigor Empire" ? new Color(220, 60, 60) : new Color(60, 140, 220);
-                DrawSpacedText(_titleFont, bc.Faction,
-                    new Microsoft.Xna.Framework.Vector2(textX, textY), factionColor);
-                textY += 30f;
 
-                // Message body with word wrap
-                string msg = bc.Message;
-                float wrapW = maxTextW;
-                var words = msg.Split(' ');
-                string line = "";
-                foreach (var word in words)
+        // Build filtered + word-wrapped lines
+        var lines = new List<(string text, Color color, bool isHeader)>();
+        foreach (var bc in _pendingBroadcasts)
+        {
+            // Filter
+            if (_broadcastTab == 1 && bc.Faction != "Trigor Empire") continue;
+            if (_broadcastTab == 2 && bc.Faction != "Atlas Federation") continue;
+
+            Color factionColor = bc.Faction == "Trigor Empire" ? new Color(220, 60, 60) : new Color(60, 140, 220);
+
+            // Faction header
+            lines.Add((bc.Faction, factionColor, true));
+
+            // Commander name & title
+            if (!string.IsNullOrEmpty(bc.CommanderName))
+                lines.Add(($"{bc.CommanderName}, {bc.CommanderTitle}", factionColor * 0.8f, false));
+
+            // Message body with word wrap (spacing matches DrawSpacedText)
+            string msg = SanitizeText(bc.Message);
+            float wrapW = dialogW - 60f;
+            float spaceW = 8f;
+            var words = msg.Split(' ');
+            string curLine = "";
+            float lineW = 0f;
+            foreach (var word in words)
+            {
+                float wordW = _font.MeasureString(word).X;
+                bool wordTooWide = wordW > wrapW;
+
+                if (curLine.Length == 0)
                 {
-                    string testLine = line.Length == 0 ? word : line + " " + word;
-                    var sz = _font.MeasureString(testLine);
-                    if (sz.X > wrapW && line.Length > 0)
+                    if (wordTooWide)
                     {
-                        DrawSpacedText(_font, line,
-                            new Microsoft.Xna.Framework.Vector2(textX, textY), Color.White * 0.9f);
-                        textY += 22f;
-                        line = word;
+                        // Character-split long word
+                        string chunk = "";
+                        float chunkW = 0f;
+                        foreach (char c in word)
+                        {
+                            float cw = _font.MeasureString(c.ToString()).X;
+                            if (chunkW + cw > wrapW && chunk.Length > 0)
+                            {
+                                lines.Add((chunk, Color.White * 0.9f, false));
+                                chunk = c.ToString();
+                                chunkW = cw;
+                            }
+                            else
+                            {
+                                chunk += c;
+                                chunkW += cw;
+                            }
+                        }
+                        curLine = chunk;
+                        lineW = chunkW;
                     }
                     else
                     {
-                        line = testLine;
+                        curLine = word;
+                        lineW = wordW;
                     }
                 }
-                if (line.Length > 0)
+                else if (lineW + spaceW + wordW > wrapW)
                 {
-                    DrawSpacedText(_font, line,
-                        new Microsoft.Xna.Framework.Vector2(textX, textY), Color.White * 0.9f);
-                    textY += 22f;
+                    lines.Add((curLine, Color.White * 0.9f, false));
+                    curLine = word;
+                    lineW = wordW;
                 }
-
-                textY += 15f;
-
-                if (textY > dy + dialogH - 50f)
-                    break;
+                else
+                {
+                    curLine += " " + word;
+                    lineW += spaceW + wordW;
+                }
             }
+            if (curLine.Length > 0)
+                lines.Add((curLine, Color.White * 0.9f, false));
+
+            lines.Add(("", Color.Transparent, false)); // spacer between broadcasts
         }
 
+        // Remove trailing spacer
+        if (lines.Count > 0 && lines[^1].text.Length == 0)
+            lines.RemoveAt(lines.Count - 1);
+
+        // Calculate total content height
+        float totalH = 0f;
+        foreach (var l in lines)
+        {
+            totalH += l.isHeader ? 36f : (l.text.Length == 0 ? 12f : 24f);
+        }
+
+        // Clamp scroll (pixel-based)
+        float maxScrollF = Math.Max(0f, totalH - contentH);
+        _broadcastScroll = (int)Math.Clamp(_broadcastScroll, 0, (int)maxScrollF);
+        if (_broadcastScroll > maxScrollF) _broadcastScroll = (int)maxScrollF;
+
+        // Draw visible lines (end/rebegin batch with scissor rect for clipping)
+        _spriteBatch.End();
+        var prevScissor = GraphicsDevice.ScissorRectangle;
+        var rs = new RasterizerState { ScissorTestEnable = true };
+        GraphicsDevice.ScissorRectangle = new Microsoft.Xna.Framework.Rectangle(
+            (int)dx, (int)contentTop, (int)dialogW, (int)(contentBottom - contentTop));
+        _spriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, null, null, rs);
+
+        float sy = contentTop - _broadcastScroll;
+        float textX = dx + 30f;
+
+        foreach (var l in lines)
+        {
+            float lineH = l.isHeader ? 36f : (l.text.Length == 0 ? 12f : 24f);
+            if (sy + lineH >= contentTop && sy <= contentBottom && l.text.Length > 0)
+            {
+                if (l.isHeader)
+                    DrawSpacedText(_titleFont, l.text, new Microsoft.Xna.Framework.Vector2(textX, sy), l.color);
+                else
+                    DrawSpacedText(_font, l.text, new Microsoft.Xna.Framework.Vector2(textX, sy), l.color);
+            }
+            sy += lineH;
+        }
+
+        _spriteBatch.End();
+        GraphicsDevice.ScissorRectangle = prevScissor;
+        _spriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend);
+
+        // Scroll indicators
+        if (_broadcastScroll > 0)
+            DrawSpacedText(_font, "^", new Microsoft.Xna.Framework.Vector2(dx + dialogW - 25f, contentTop + 5f), Color.Gray * 0.6f);
+        if (_broadcastScroll < maxScrollF)
+            DrawSpacedText(_font, "v", new Microsoft.Xna.Framework.Vector2(dx + dialogW - 25f, contentBottom - 20f), Color.Gray * 0.6f);
+
         // Footer
-        DrawSpacedText(_font, "[ESC or B] Close",
+        DrawSpacedText(_font, "[ESC or B] Close     [Tab] Filter",
             new Microsoft.Xna.Framework.Vector2(dx + 20, dy + dialogH - 30f), Color.Gray * 0.7f);
+    }
+
+    private static string SanitizeText(string text)
+    {
+        return text.Replace('\u2014', '-').Replace('\u2013', '-')
+            .Replace('\u201C', '"').Replace('\u201D', '"')
+            .Replace('\u2018', '\'').Replace('\u2019', '\'')
+            .Replace('\u2026', '.').Replace('\u00A0', ' ');
     }
 
     private void DrawLine(float x1, float y1, float x2, float y2, Color color)

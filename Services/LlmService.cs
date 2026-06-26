@@ -50,11 +50,12 @@ public class LlmService : IDisposable
     }
 
     public async Task<LlmDecision?> RequestDecisionAsync(List<StarSystemData> systems, string? playerSystemId,
-        IReadOnlySet<string> blockedRoutes, int maxBlocked, List<QuestData> activeQuests)
+        IReadOnlySet<string> blockedRoutes, int maxBlocked, List<QuestData> activeQuests,
+        List<Commander>? commanders = null)
     {
         if (!_available) return null;
 
-        string prompt = BuildPrompt(systems, playerSystemId, blockedRoutes, maxBlocked, activeQuests);
+        string prompt = BuildPrompt(systems, playerSystemId, blockedRoutes, maxBlocked, activeQuests, commanders);
 
         var body = new
         {
@@ -85,7 +86,8 @@ public class LlmService : IDisposable
     }
 
     private static string BuildPrompt(List<StarSystemData> systems, string? playerSystemId,
-        IReadOnlySet<string> blockedRoutes, int maxBlocked, List<QuestData> activeQuests)
+        IReadOnlySet<string> blockedRoutes, int maxBlocked, List<QuestData> activeQuests,
+        List<Commander>? commanders = null)
     {
         var lines = new List<string>
         {
@@ -107,6 +109,19 @@ public class LlmService : IDisposable
         if (activeQuests.Count > 0)
         {
             lines.Add("Active quests: " + string.Join(", ", activeQuests.Select(q => q.Id)));
+        }
+
+        if (commanders != null && commanders.Count > 0)
+        {
+            lines.Add("");
+            lines.Add("FACTION COMMANDERS:");
+            foreach (var c in commanders)
+            {
+                lines.Add($"- {c.Title} {c.Name} ({c.Faction})");
+                lines.Add($"  Personality: {c.Personality}");
+                lines.Add($"  Backstory: {c.Backstory}");
+                lines.Add($"  Speech style: {c.SpeechTics}");
+            }
         }
 
         lines.Add("");
