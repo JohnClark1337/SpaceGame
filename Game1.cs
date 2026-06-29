@@ -454,6 +454,8 @@ public class Game1 : Game
             Id = q.Id,
             Name = q.Name,
             Description = q.Description,
+            QuestType = q.QuestType,
+            NextQuestId = q.NextQuestId,
             ObjectiveType = q.ObjectiveType,
             TargetSystem = q.TargetSystem,
             TargetItem = q.TargetItem,

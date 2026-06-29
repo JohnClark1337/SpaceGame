@@ -108,7 +108,9 @@ public class Galaxy
             }
         };
 
-        AvailableQuests = new List<QuestData>(AllQuests);
+        // Hide quests that are chain-dependent (referenced by NextQuestId) from initial available pool
+        var chainedQuestIds = AllQuests.Where(q => !string.IsNullOrEmpty(q.NextQuestId)).Select(q => q.NextQuestId).ToHashSet();
+        AvailableQuests = AllQuests.Where(q => !chainedQuestIds.Contains(q.Id)).ToList();
         Economy = new Economy(this);
         Economy.Initialize();
         NewsService = new NewsService();
@@ -229,6 +231,19 @@ public class Galaxy
 
         player.CompletedQuests.Add(quest.Id);
         ActiveQuests.Remove(quest);
+
+        // Auto-accept next quest in chain
+        if (!string.IsNullOrEmpty(quest.NextQuestId))
+        {
+            var nextQuest = AllQuests.FirstOrDefault(q => q.Id == quest.NextQuestId);
+            if (nextQuest != null && !ActiveQuests.Any(aq => aq.Id == nextQuest.Id) && !player.CompletedQuests.Contains(nextQuest.Id))
+            {
+                ActiveQuests.Add(nextQuest);
+                AvailableQuests.Remove(nextQuest);
+                if (nextQuest.ObjectiveType == "destroy")
+                    _destroyKillCounts[nextQuest.Id] = 0;
+            }
+        }
     }
 
     public void CheckQuestProgress(Player player)

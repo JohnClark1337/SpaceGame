@@ -22,7 +22,7 @@ public class MainForm : Form
         _data = data;
 
         Text = "SpaceGame Editor";
-        Size = new Size(1100, 700);
+        Size = new Size(1100, 740);
         StartPosition = FormStartPosition.CenterScreen;
 
         var mainPanel = new Panel { Dock = DockStyle.Fill, Padding = new Padding(4) };
@@ -127,7 +127,7 @@ public class MainForm : Form
         var page = new TabPage(title);
         var panel = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2 };
         panel.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        panel.RowStyles.Add(new RowStyle(SizeType.Absolute, 36));
+        panel.RowStyles.Add(new RowStyle(SizeType.Absolute, 44));
 
         grid.Dock = DockStyle.Fill;
         grid.DoubleClick += (_, _) =>
@@ -137,10 +137,10 @@ public class MainForm : Form
         };
         panel.Controls.Add(grid, 0, 0);
 
-        var btnPanel = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.LeftToRight, Height = 36, Padding = new Padding(4) };
+        var btnPanel = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.LeftToRight, Height = 44, Padding = new Padding(4) };
         foreach (var (text, handler) in buttons)
         {
-            var btn = new Button { Text = text, Height = 28, AutoSize = true };
+            var btn = new Button { Text = text, Height = 32, AutoSize = true };
             btn.Click += handler;
             btnPanel.Controls.Add(btn);
         }

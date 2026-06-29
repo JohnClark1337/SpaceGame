@@ -13,6 +13,8 @@ public class QuestData
     public string Id { get; set; } = "";
     public string Name { get; set; } = "";
     public string Description { get; set; } = "";
+    public string QuestType { get; set; } = "Standard";
+    public string? NextQuestId { get; set; }
     public string ObjectiveType { get; set; } = "travel";
     public string? TargetSystem { get; set; }
     public string? TargetItem { get; set; }
