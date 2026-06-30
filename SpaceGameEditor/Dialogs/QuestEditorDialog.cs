@@ -9,7 +9,7 @@ public class QuestEditorDialog : Form
     private readonly ComboBox _cmbQuestType, _cmbNextQuest;
     private readonly NumericUpDown _numTargetCount;
     private readonly ListBox _lstRewards, _lstReqResources, _lstDialogs;
-    private readonly Button _btnAddReward, _btnRemoveReward, _btnAddReq, _btnRemoveReq, _btnAddDialog, _btnRemoveDialog, _btnOk, _btnCancel;
+    private readonly Button _btnAddReward, _btnRemoveReward, _btnAddReq, _btnRemoveReq, _btnAddDialog, _btnEditDialog, _btnRemoveDialog, _btnOk, _btnCancel;
     private readonly Label _lblError;
     private readonly List<string> _systemIds;
     private readonly List<string> _upgradeIds;
@@ -145,9 +145,11 @@ public class QuestEditorDialog : Form
         _lstDialogs.AddTo(this);
         _btnAddDialog = new Button { Text = "Add", Location = new(btnX, y), Size = new(btnW, btnH) };
         _btnAddDialog.AddTo(this);
-        _btnRemoveDialog = new Button { Text = "Del", Location = new(btnX, y + 36), Size = new(btnW, btnH) };
+        _btnEditDialog = new Button { Text = "Edit", Location = new(btnX, y + 30), Size = new(btnW, btnH) };
+        _btnEditDialog.AddTo(this);
+        _btnRemoveDialog = new Button { Text = "Del", Location = new(btnX, y + 60), Size = new(btnW, btnH) };
         _btnRemoveDialog.AddTo(this);
-        y += 78;
+        y += 92;
 
         _lblError = new Label { Text = "", ForeColor = Color.Red, Location = new(10, y), Size = new(480, 20) };
         _lblError.AddTo(this);
@@ -165,7 +167,9 @@ public class QuestEditorDialog : Form
         _btnAddReq.Click += (_, _) => AddResource();
         _btnRemoveReq.Click += (_, _) => RemoveResource();
         _btnAddDialog.Click += (_, _) => AddDialog();
+        _btnEditDialog.Click += (_, _) => EditDialog();
         _btnRemoveDialog.Click += (_, _) => RemoveDialog();
+        _lstDialogs.DoubleClick += (_, _) => EditDialog();
 
         if (existing != null)
         {
@@ -256,6 +260,20 @@ public class QuestEditorDialog : Form
         {
             _dialogs.Add(dlg.Dialog);
             RefreshDialogsList();
+        }
+    }
+
+    private void EditDialog()
+    {
+        if (_lstDialogs.SelectedIndex >= 0 && _lstDialogs.SelectedIndex < _dialogs.Count)
+        {
+            var existing = _dialogs[_lstDialogs.SelectedIndex];
+            using var dlg = new DialogEditorDialog(existing);
+            if (dlg.ShowDialog(this) == DialogResult.OK && dlg.Dialog != null)
+            {
+                _dialogs[_lstDialogs.SelectedIndex] = dlg.Dialog;
+                RefreshDialogsList();
+            }
         }
     }
 

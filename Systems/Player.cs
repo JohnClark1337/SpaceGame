@@ -198,9 +198,9 @@ public class Player
         RotationVelocity *= 0.9f;
         Angle += RotationVelocity * dt;
 
-        if (thrustUp)
+        if (thrustUp && Fuel > 0)
             Velocity += Vector2.FromAngle(Angle) * Thrust * dt;
-        if (thrustDown)
+        if (thrustDown && Fuel > 0)
             Velocity -= Vector2.FromAngle(Angle) * Thrust * 0.5f * dt;
 
         float speed = Velocity.Length();

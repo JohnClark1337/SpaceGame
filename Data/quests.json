@@ -102,6 +102,68 @@
           "Trigger": "on_complete"
         }
       ]
+    },
+    {
+      "Id": "SpecialCargo",
+      "Name": "Special Cargo",
+      "Description": "Deliver special cargo to Alpha Centauri Station",
+      "QuestType": "QuestLine",
+      "NextQuestId": "EnemyHit",
+      "ObjectiveType": "travel",
+      "TargetSystem": "alpha",
+      "TargetItem": null,
+      "TargetCount": 1,
+      "RewardCredits": 0,
+      "RewardUpgrade": "cargo_v1",
+      "RewardEquipment": null,
+      "GiverSystem": "proxima",
+      "RewardDefenseSystem": null,
+      "RequiredResources": {},
+      "Dialogs": [
+        {
+          "Id": "SpecCarg",
+          "Text": "Hey you....yes you....I have a proposition. I see that you are a trader of goods. How would you like an upgrade to your beautiful vessel that will allow you to carry more cargo?\r\n\r\nI need this package delivered to my contact in Centauri. I would deliver it myself, but I have run into...difficulties that must be dealt with.",
+          "Speaker": "Shady Man in Suit",
+          "Trigger": "on_accept"
+        },
+        {
+          "Id": "SpecCarg2",
+          "Text": "Head 1: Ah, brothers! I do believe this one has what we are waiting for!\r\n\r\nHead 2: Are you shhhure about thishh Kashhhper? He doeshhh not look like the other...\r\n\r\nHead 3: Why yyyes Kashim, this one dddoes look dddifferent\r\n\r\nKasper: There\u0027s nothing to fear Kirke, see? He is presenting the package that we were waiting for.\r\n\r\nKashim: Ah yeshhh, thishhh is jushhht what we needed\r\n\r\nKirke: Bbbbe cccareful oooopening iiitt...\r\n\r\nKasper: No fear. It is exactly what we needed. You traveler have done your job. We will give you the upgrade as per the agreement. \r\n\r\n*Kasper looks you over*\r\n\r\nKasper: You appear to be very skilled. We may have another job for you that will lead to further rewards",
+          "Speaker": "3-Headed Vlorpol",
+          "Trigger": "on_complete"
+        }
+      ]
+    },
+    {
+      "Id": "EnemyHit",
+      "Name": "Hunt the Hunter",
+      "Description": "Kasper, Kashim, and Kirke have a new mission for you.",
+      "QuestType": "Standard",
+      "NextQuestId": null,
+      "ObjectiveType": "destroy",
+      "TargetSystem": "barnard",
+      "TargetItem": "fighter",
+      "TargetCount": 1,
+      "RewardCredits": 400,
+      "RewardUpgrade": null,
+      "RewardEquipment": null,
+      "GiverSystem": "alpha",
+      "RewardDefenseSystem": null,
+      "RequiredResources": {},
+      "Dialogs": [
+        {
+          "Id": "3h2",
+          "Text": "Kasper: Ah, I see you wish to take the next quest. Good! We have been having issues with a certain....armed individual...who wishes to do us harm. Luckily we have his location. Head to the barnard system and...deal with him, please?",
+          "Speaker": "3 Headed",
+          "Trigger": "on_accept"
+        },
+        {
+          "Id": "3h3",
+          "Text": "Kasper: Very good! I knew we could count on you! Return to us when you desire another mission!",
+          "Speaker": "3-Headed Vlorpol",
+          "Trigger": "on_complete"
+        }
+      ]
     }
   ]
 }

@@ -3160,9 +3160,18 @@ public class Game1 : Game
         var lines = new List<string>();
         if (string.IsNullOrEmpty(text)) return lines;
 
-        foreach (var paragraph in text.Split('\n'))
+        text = text.Replace("\r\n", "\n");
+        var paragraphs = text.Split('\n');
+        for (int p = 0; p < paragraphs.Length; p++)
         {
-            var words = paragraph.Split(' ');
+            if (paragraphs[p].Length == 0)
+            {
+                if (p < paragraphs.Length - 1)
+                    lines.Add("");
+                continue;
+            }
+
+            var words = paragraphs[p].Split(' ');
             var currentLine = new List<string>();
             float lineWidth = 0;
 
@@ -3178,7 +3187,7 @@ public class Game1 : Game
             {
                 float wordWidth = font.MeasureString(word).X;
                 if (currentLine.Count > 0)
-                    wordWidth += 8f; // space gap
+                    wordWidth += 8f;
 
                 if (lineWidth + wordWidth > maxWidth && currentLine.Count > 0)
                     FlushLine();
@@ -3713,30 +3722,7 @@ public class Game1 : Game
         float bottomArea = dy + dialogH - 35f;
         int maxVisible = (int)((bottomArea - topArea) / lineH);
 
-        string msg = _currentQuestDialog.Text;
-        var words = msg.Split(' ');
-        _questDialogWrappedLines.Clear();
-        string line = "";
-        float lineW = 0f;
-        float spaceExtra = 8f;
-        foreach (var word in words)
-        {
-            float wordW = _font.MeasureString(word).X;
-            float testW = line.Length == 0 ? wordW : lineW + spaceExtra + wordW;
-            if (testW > maxTextW && line.Length > 0)
-            {
-                _questDialogWrappedLines.Add(line);
-                line = word;
-                lineW = wordW;
-            }
-            else
-            {
-                line = line.Length == 0 ? word : line + " " + word;
-                lineW = testW;
-            }
-        }
-        if (line.Length > 0)
-            _questDialogWrappedLines.Add(line);
+        _questDialogWrappedLines = WordWrap(_font, _currentQuestDialog.Text, maxTextW);
 
         _questDialogScroll = Math.Clamp(_questDialogScroll, 0,
             Math.Max(0, _questDialogWrappedLines.Count - maxVisible));
