@@ -1107,102 +1107,100 @@ public class Game1 : Game
                         _systemInfoScroll = 0;
                     }
                 }
+                _prevKeyboard = keyboard;
+                _prevMouse = mouse;
             }
-
-            _prevKeyboard = keyboard;
-            _prevMouse = mouse;
-
-            // AI commander logic
-            if (_player.CurrentSystemId != null)
-            {
-                if (!_llmChecked)
-                {
-                    _llmChecked = true;
-                    _ = CheckLlmAsync();
-                }
-
-                if (_useLlm)
-                {
-                    _aiTickTimer -= dt;
-                    if (_aiTickTimer <= 0f)
-                    {
-                        _aiTickTimer = 15f;
-                        _ = LlmAiTickAsync();
-                    }
-                }
-                else
-                {
-                    // Rule-based route blocking (enemy-system routes only, filtered by RouteManager)
-                    _aiTickTimer -= dt;
-                    if (_aiTickTimer <= 0f)
-                    {
-                        _aiTickTimer = 4f;
-                        _routeManager.AiTick(_player.CurrentSystemId);
-                    }
-
-                    // Rule-based station capture
-                    _aiCaptureTimer -= dt;
-                    if (_aiCaptureTimer <= 0f)
-                    {
-                        _aiCaptureTimer = 30f;
-                        AiCaptureTick();
-                    }
-
-                    // Rule-based Federation counter-attack
-                    _federationAiTimer -= dt;
-                    if (_federationAiTimer <= 0f)
-                    {
-                        _federationAiTimer = 30f;
-                        FederationAiTick();
-                    }
-
-                    // AI station defense building
-                    _aiDefenseTimer -= dt;
-                    if (_aiDefenseTimer <= 0f)
-                    {
-                        _aiDefenseTimer = 60f;
-                        AiDefenseTick();
-                    }
-
-                    // AI defense fetch quest generation
-                    _aiDefenseQuestTimer -= dt;
-                    if (_aiDefenseQuestTimer <= 0f)
-                    {
-                        _aiDefenseQuestTimer = 120f;
-                        GenerateDefenseQuest();
-                    }
-                }
-            }
-
-            // Attack timer — pauses while player is inside the attacked system
-            bool inAttackedSystem = _viewMode == ViewMode.System && _galaxy.CurrentSystem != null &&
-                _activeAttacks.ContainsKey(_galaxy.CurrentSystem.Id);
-            if (!inAttackedSystem)
-            {
-                foreach (var id in _activeAttacks.Keys.ToList())
-                {
-                    var list = _activeAttacks[id];
-                    // Decrement the first attack's timer; all share the same window
-                    if (list.Count > 0)
-                    {
-                        var first = list[0];
-                        first.Timer -= dt;
-                        list[0] = first;
-                        if (first.Timer <= 0f)
-                            ResolveAttack(id);
-                    }
-                }
-            }
-
-            if (_invMsgTimer > 0f)
-            {
-                _invMsgTimer -= dt;
-                if (_invMsgTimer <= 0f)
-                    _invMsgText = "";
-            }
-
-            _starfield.Update(dt, _player.Velocity);
         }
+
+        // AI commander logic (runs in both galaxy and system view)
+        if (_player.CurrentSystemId != null)
+        {
+            if (!_llmChecked)
+            {
+                _llmChecked = true;
+                _ = CheckLlmAsync();
+            }
+
+            if (_useLlm)
+            {
+                _aiTickTimer -= dt;
+                if (_aiTickTimer <= 0f)
+                {
+                    _aiTickTimer = 15f;
+                    _ = LlmAiTickAsync();
+                }
+            }
+            else
+            {
+                // Rule-based route blocking (enemy-system routes only, filtered by RouteManager)
+                _aiTickTimer -= dt;
+                if (_aiTickTimer <= 0f)
+                {
+                    _aiTickTimer = 4f;
+                    _routeManager.AiTick(_player.CurrentSystemId);
+                }
+
+                // Rule-based station capture
+                _aiCaptureTimer -= dt;
+                if (_aiCaptureTimer <= 0f)
+                {
+                    _aiCaptureTimer = 30f;
+                    AiCaptureTick();
+                }
+
+                // Rule-based Federation counter-attack
+                _federationAiTimer -= dt;
+                if (_federationAiTimer <= 0f)
+                {
+                    _federationAiTimer = 30f;
+                    FederationAiTick();
+                }
+
+                // AI station defense building
+                _aiDefenseTimer -= dt;
+                if (_aiDefenseTimer <= 0f)
+                {
+                    _aiDefenseTimer = 60f;
+                    AiDefenseTick();
+                }
+
+                // AI defense fetch quest generation
+                _aiDefenseQuestTimer -= dt;
+                if (_aiDefenseQuestTimer <= 0f)
+                {
+                    _aiDefenseQuestTimer = 120f;
+                    GenerateDefenseQuest();
+                }
+            }
+        }
+
+        // Attack timer — pauses while player is inside the attacked system
+        bool inAttackedSystem = _viewMode == ViewMode.System && _galaxy.CurrentSystem != null &&
+            _activeAttacks.ContainsKey(_galaxy.CurrentSystem.Id);
+        if (!inAttackedSystem)
+        {
+            foreach (var id in _activeAttacks.Keys.ToList())
+            {
+                var list = _activeAttacks[id];
+                if (list.Count > 0)
+                {
+                    var first = list[0];
+                    first.Timer -= dt;
+                    list[0] = first;
+                    if (first.Timer <= 0f)
+                        ResolveAttack(id);
+                }
+            }
+        }
+
+        if (_invMsgTimer > 0f)
+        {
+            _invMsgTimer -= dt;
+            if (_invMsgTimer <= 0f)
+                _invMsgText = "";
+        }
+
+        _starfield.Update(dt, _player.Velocity);
 
         // Global save/load shortcuts
         bool f5Hit = keyboard.IsKeyDown(Keys.F5) && _prevKeyboard.IsKeyUp(Keys.F5);
