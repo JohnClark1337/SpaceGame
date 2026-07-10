@@ -4221,18 +4221,17 @@ public class SystemScene
         int weaponSlot = 0;
         foreach (var eq in allEquipment)
         {
-            if (eq.Slot == "weapon")
+            _player.UnequippedEquipment.Add(new InventoryEntry { Id = eq.Id, Quantity = 1 });
+
+            if (eq.Slot == "weapon" && weaponSlot < 2)
             {
-                if (weaponSlot < 2)
-                {
-                    string key = weaponSlot == 0 ? "weapon1" : "weapon2";
-                    _player.Equipment[key] = eq.Id;
-                    weaponSlot++;
-                }
+                string key = weaponSlot == 0 ? "weapon1" : "weapon2";
+                _player.Equipment[key] = eq.Id;
+                weaponSlot++;
             }
-            else if (eq.Slot == "shield")
+            else if (eq.Slot == "shield" && !_player.Equipment.ContainsKey("shield"))
                 _player.Equipment["shield"] = eq.Id;
-            else if (eq.Slot == "engine")
+            else if (eq.Slot == "engine" && !_player.Equipment.ContainsKey("engine"))
                 _player.Equipment["engine"] = eq.Id;
             else if (eq.Slot == "utility")
             {
@@ -4242,10 +4241,6 @@ public class SystemScene
                     _player.Equipment["utility2"] = eq.Id;
             }
         }
-
-        // Add extra weapons to UnequippedEquipment for practice
-        _player.UnequippedEquipment.Add(new InventoryEntry { Id = "laser_cannon_mk1", Quantity = 1 });
-        _player.UnequippedEquipment.Add(new InventoryEntry { Id = "missile_launcher", Quantity = 1 });
 
         if (!_player.QuestItems.Any(q => q.Id == "princess_lifepod"))
             _player.QuestItems.Add(new InventoryEntry { Id = "princess_lifepod", Quantity = 1 });
