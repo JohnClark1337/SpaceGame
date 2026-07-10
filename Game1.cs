@@ -1107,9 +1107,9 @@ public class Game1 : Game
                         _systemInfoScroll = 0;
                     }
                 }
-                _prevKeyboard = keyboard;
-                _prevMouse = mouse;
             }
+            _prevKeyboard = keyboard;
+            _prevMouse = mouse;
         }
 
         // AI commander logic (runs in both galaxy and system view)
