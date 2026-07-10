@@ -14,6 +14,36 @@
         "QuestId": "test_attack",
         "Status": "active"
       }
+    },
+    {
+      "SystemId": "barnard",
+      "Ships": [
+        {
+          "Type": "fighter",
+          "Count": 1,
+          "Faction": "Trigor Empire",
+          "AiState": "Orbit"
+        }
+      ],
+      "QuestCondition": {
+        "QuestId": "EnemyHit",
+        "Status": "active"
+      }
+    },
+    {
+      "SystemId": "capella",
+      "Ships": [
+        {
+          "Type": "fighter",
+          "Count": 3,
+          "Faction": "Trigor Empire",
+          "AiState": "Attack"
+        }
+      ],
+      "QuestCondition": {
+        "QuestId": "CargoFast",
+        "Status": "active"
+      }
     }
   ]
 }

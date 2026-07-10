@@ -138,8 +138,8 @@
       "Id": "EnemyHit",
       "Name": "Hunt the Hunter",
       "Description": "Kasper, Kashim, and Kirke have a new mission for you.",
-      "QuestType": "Standard",
-      "NextQuestId": null,
+      "QuestType": "QuestLine",
+      "NextQuestId": "CargoFast",
       "ObjectiveType": "destroy",
       "TargetSystem": "barnard",
       "TargetItem": "fighter",
@@ -154,7 +154,7 @@
         {
           "Id": "3h2",
           "Text": "Kasper: Ah, I see you wish to take the next quest. Good! We have been having issues with a certain....armed individual...who wishes to do us harm. Luckily we have his location. Head to the barnard system and...deal with him, please?",
-          "Speaker": "3 Headed",
+          "Speaker": "3-Headed Vlorpol",
           "Trigger": "on_accept"
         },
         {
@@ -162,6 +162,45 @@
           "Text": "Kasper: Very good! I knew we could count on you! Return to us when you desire another mission!",
           "Speaker": "3-Headed Vlorpol",
           "Trigger": "on_complete"
+        }
+      ]
+    },
+    {
+      "Id": "CargoFast",
+      "Name": "Silver Shipment",
+      "Description": "Kasper has a new mission for you! Resources need to be delivered to the Capella system.",
+      "QuestType": "QuestLine",
+      "NextQuestId": null,
+      "ObjectiveType": "travel",
+      "TargetSystem": "capella",
+      "TargetItem": null,
+      "TargetCount": 1,
+      "RewardCredits": 0,
+      "RewardUpgrade": null,
+      "RewardEquipment": "hull_plating_mk1",
+      "GiverSystem": "alpha",
+      "RewardDefenseSystem": null,
+      "RequiredResources": {
+        "Silver": 5
+      },
+      "Dialogs": [
+        {
+          "Id": "SilvGiv",
+          "Text": "Kasper: Welcome back my friend! As you may suspect, we are  working for an organization that operates slightly...below the common laws. Trust me when I say that we have common enemies! My friends require 5 units of silver to be delivered to the Capella system for a certain...project. You will be handsomely rewarded!",
+          "Speaker": "3-Headed Vlorpol",
+          "Trigger": "on_accept"
+        },
+        {
+          "Id": "SilvComp",
+          "Text": "Jerrard: I see Kasper\u0027s faith in you was well put! My name is Jerrard, and I work for the Organization. We have been watching you and see great potential. Return here if you wish to be given further instructions!",
+          "Speaker": "Jerrard",
+          "Trigger": "on_complete"
+        },
+        {
+          "Id": "halt1",
+          "Text": "Borgo: Scanners have detected the terrorist ship entering the system! All fighters, engage target!",
+          "Speaker": "Captain Borgo",
+          "Trigger": "on_enter_system"
         }
       ]
     }

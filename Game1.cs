@@ -475,6 +475,7 @@ public class Game1 : Game
         _player.Angle = 0;
         _player.Credits = 50;
         _player.Health = 50;
+        _player.Fuel = _player.MaxFuel;
         _player.OwnedUpgrades.Clear();
         _player.CompletedQuests.Clear();
         _player.Resources.Clear();
@@ -991,7 +992,7 @@ public class Game1 : Game
                             _galaxy.CurrentSystem = destSys;
                             _galaxy.CheckQuestProgress(_player);
                             _galaxy.RefreshAvailableQuests(_player);
-                            foreach (var q in _galaxy.ActiveQuests)
+                            foreach (var q in _galaxy.ActiveQuests.Where(q => q.TargetSystem == destSys.Id))
                                 ShowQuestDialogs(q, "on_enter_system");
                             SetStatus($"Arrived at {destSys.Name}");
                             _galaxyPlayerPos = _player.Position;

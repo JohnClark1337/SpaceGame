@@ -108,9 +108,12 @@ public class Galaxy
             }
         };
 
-        // Hide quests that are chain-dependent (referenced by NextQuestId) from initial available pool
-        var chainedQuestIds = AllQuests.Where(q => !string.IsNullOrEmpty(q.NextQuestId)).Select(q => q.NextQuestId).ToHashSet();
-        AvailableQuests = AllQuests.Where(q => !chainedQuestIds.Contains(q.Id)).ToList();
+        // Hide quests in a QuestLine chain whose predecessor hasn't been completed yet
+        var chainedNextIds = AllQuests
+            .Where(q => q.QuestType == "QuestLine" && !string.IsNullOrEmpty(q.NextQuestId))
+            .Select(q => q.NextQuestId)
+            .ToHashSet();
+        AvailableQuests = AllQuests.Where(q => !chainedNextIds.Contains(q.Id)).ToList();
         Economy = new Economy(this);
         Economy.Initialize();
         NewsService = new NewsService();
@@ -135,9 +138,26 @@ public class Galaxy
 
     public void RefreshAvailableQuests(Player player)
     {
+        // Build set of quest IDs that are "next" in a QuestLine chain
+        var chainedNextIds = AllQuests
+            .Where(q => q.QuestType == "QuestLine" && !string.IsNullOrEmpty(q.NextQuestId))
+            .Select(q => q.NextQuestId)
+            .ToHashSet();
+
         AvailableQuests = AllQuests
             .Where(q => !player.CompletedQuests.Contains(q.Id))
             .Where(q => !ActiveQuests.Any(aq => aq.Id == q.Id))
+            .Where(q =>
+            {
+                // If this quest is a subsequent step in a chain, only show it
+                // when the preceding quest has been completed
+                if (chainedNextIds.Contains(q.Id))
+                {
+                    var predecessor = AllQuests.FirstOrDefault(p => p.NextQuestId == q.Id);
+                    return predecessor != null && player.CompletedQuests.Contains(predecessor.Id);
+                }
+                return true;
+            })
             .ToList();
     }
 
@@ -232,18 +252,8 @@ public class Galaxy
         player.CompletedQuests.Add(quest.Id);
         ActiveQuests.Remove(quest);
 
-        // Auto-accept next quest in chain
-        if (!string.IsNullOrEmpty(quest.NextQuestId))
-        {
-            var nextQuest = AllQuests.FirstOrDefault(q => q.Id == quest.NextQuestId);
-            if (nextQuest != null && !ActiveQuests.Any(aq => aq.Id == nextQuest.Id) && !player.CompletedQuests.Contains(nextQuest.Id))
-            {
-                ActiveQuests.Add(nextQuest);
-                AvailableQuests.Remove(nextQuest);
-                if (nextQuest.ObjectiveType == "destroy")
-                    _destroyKillCounts[nextQuest.Id] = 0;
-            }
-        }
+        // Next quest in chain becomes available (visible on quest board) for manual acceptance
+        RefreshAvailableQuests(player);
     }
 
     public void CheckQuestProgress(Player player)
