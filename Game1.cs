@@ -740,13 +740,13 @@ public class Game1 : Game
                              (keyboard.IsKeyDown(Keys.W) && _prevKeyboard.IsKeyUp(Keys.W));
                 if (invLeft)
                 {
-                    _inventoryTab = (_inventoryTab - 1 + 4) % 4;
+                    _inventoryTab = (_inventoryTab - 1 + 5) % 5;
                     _invSelection = 0;
                     _equipSelectMode = false;
                 }
                 if (invRight)
                 {
-                    _inventoryTab = (_inventoryTab + 1) % 4;
+                    _inventoryTab = (_inventoryTab + 1) % 5;
                     _invSelection = 0;
                     _equipSelectMode = false;
                 }
@@ -854,7 +854,7 @@ public class Game1 : Game
                         }
                     }
                 }
-                else if (_inventoryTab == 3)
+                else if (_inventoryTab == 4)
                 {
                     if (invDown)
                         _invSelection++;
@@ -1885,16 +1885,20 @@ public class Game1 : Game
     {
         // Top-left info
         DrawSpacedText(_font, $"Credits: {_player.Credits}", new Microsoft.Xna.Framework.Vector2(10, 10), Color.Yellow);
-        DrawSpacedText(_font, $"Fuel: {_player.Fuel:F0}/{_player.MaxFuel}  HP: {_player.Health}/{_player.MaxHealth}",
-            new Microsoft.Xna.Framework.Vector2(10, 190), Color.Gray * 0.6f);
 
-        // AI status
+        // Right-side status (fuel, HP, AI info)
+        float rightX = ScreenWidth - 300;
+        DrawSpacedText(_font, $"Fuel: {_player.Fuel:F0}/{_player.MaxFuel}",
+            new Microsoft.Xna.Framework.Vector2(rightX, 10), Color.Gray * 0.6f);
+        DrawSpacedText(_font, $"HP: {_player.Health}/{_player.MaxHealth}",
+            new Microsoft.Xna.Framework.Vector2(rightX, 30), Color.Gray * 0.6f);
+
         string diffStr = _routeManager.Difficulty.ToString();
         int blockedCount = _routeManager.CountBlocked;
         int maxBlocked = _routeManager.MaxBlocked;
         Color aiColor = blockedCount > 0 ? new Color(255, 150, 100) : Color.Gray * 0.6f;
         DrawSpacedText(_font, $"AI [{diffStr}]  Blockades: {blockedCount}/{maxBlocked}",
-            new Microsoft.Xna.Framework.Vector2(10, 170), aiColor);
+            new Microsoft.Xna.Framework.Vector2(rightX, 55), aiColor);
 
         // LLM commander notification
         if (_useLlm)
@@ -1933,9 +1937,9 @@ public class Game1 : Game
                     .Cast<StarSystemData>()
                     .ToList();
 
-                float routeY = 210;
+                float routeY = 170;
                 DrawSpacedText(_font, "--- Connections ---",
-                    new Microsoft.Xna.Framework.Vector2(10, routeY), Color.Gold);
+                    new Microsoft.Xna.Framework.Vector2(rightX, routeY), Color.Gold);
                 routeY += 22;
 
                 int selectableIdx = 0;
@@ -1984,7 +1988,7 @@ public class Game1 : Game
                     }
                     string label = $"{prefix}{conn.Name}  [{(int)dist}u]{suffix}";
                     DrawSpacedText(_font, label,
-                        new Microsoft.Xna.Framework.Vector2(10, routeY), c);
+                        new Microsoft.Xna.Framework.Vector2(rightX, routeY), c);
                     routeY += 18;
 
                     if (!blocked && inRange) selectableIdx++;
@@ -2306,8 +2310,10 @@ public class Game1 : Game
 
                     Color c = Color.White * 0.75f;
                     string hint = "";
-                    if (hereBuy < curBuy) { hint = "BUY"; c = Color.LightGreen; }
-                    else if (hereSell > curSell) { hint = "SELL"; c = Color.Orange; }
+                    // BUY = buy in current system, sell in selected for profit
+                    if (curBuy < hereSell) { hint = "BUY"; c = Color.LightGreen; }
+                    // SELL = buy in selected system, sell in current for profit
+                    else if (hereBuy < curSell) { hint = "SELL"; c = Color.Orange; }
 
                     if (hint != "")
                     {
@@ -2884,7 +2890,7 @@ public class Game1 : Game
         }
 
         // Tabs
-        string[] tabs = { "Quest Items", "Resources", "Equipment", "Consumables" };
+        string[] tabs = { "Quest Items", "Resources", "Equipment", "Upgrades", "Consumables" };
         float tabX = textX;
         for (int i = 0; i < tabs.Length; i++)
         {
@@ -2906,6 +2912,8 @@ public class Game1 : Game
         else if (_inventoryTab == 2)
             DrawInventoryEquipment(new Microsoft.Xna.Framework.Vector2(textX, textY), px + panelW - 20);
         else if (_inventoryTab == 3)
+            DrawInventoryUpgrades(new Microsoft.Xna.Framework.Vector2(textX, textY), px + panelW - 20);
+        else if (_inventoryTab == 4)
             DrawInventoryConsumables(new Microsoft.Xna.Framework.Vector2(textX, textY), px + panelW - 20);
 
         // Inventory message overlay (e.g. "Fuel Already Full")
@@ -3087,6 +3095,34 @@ public class Game1 : Game
         textY += 4;
 
         // Hint
+        DrawSpacedText(_font, "[Q/E] Switch tab  |  [I] or [ESC] Close",
+            new Microsoft.Xna.Framework.Vector2(pos.X, textY), Color.Gray * 0.5f);
+    }
+
+    private void DrawInventoryUpgrades(Microsoft.Xna.Framework.Vector2 pos, float rightX)
+    {
+        float textY = pos.Y;
+
+        if (_player.OwnedUpgrades.Count == 0)
+        {
+            DrawSpacedText(_font, "No upgrades purchased.",
+                new Microsoft.Xna.Framework.Vector2(pos.X, textY), Color.Gray);
+            return;
+        }
+
+        foreach (var upId in _player.OwnedUpgrades)
+        {
+            var up = _galaxy.AllUpgrades.FirstOrDefault(u => u.Id == upId);
+            if (up == null) continue;
+
+            DrawSpacedText(_font, $"  {up.Name}",
+                new Microsoft.Xna.Framework.Vector2(pos.X, textY), Color.Lime);
+            textY += 20;
+            DrawSpacedText(_font, $"     {up.Description}",
+                new Microsoft.Xna.Framework.Vector2(pos.X, textY), Color.Gray * 0.7f);
+            textY += 24;
+        }
+
         DrawSpacedText(_font, "[Q/E] Switch tab  |  [I] or [ESC] Close",
             new Microsoft.Xna.Framework.Vector2(pos.X, textY), Color.Gray * 0.5f);
     }

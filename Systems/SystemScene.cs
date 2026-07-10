@@ -36,6 +36,8 @@ public class SystemScene
     private float _trainingFriendlyRespawnTimer;
     private bool _empireStationRespawning;
     private float _empireStationRespawnTimer;
+    private bool _stationRespawning;
+    private float _stationRespawnTimer;
     private bool _trainingHostile;
     private int _stationDefenseLevel;
     private bool _stationHasShield;
@@ -255,6 +257,8 @@ public class SystemScene
         _trainingFriendlyRespawnTimer = 0f;
         _empireStationRespawning = false;
         _empireStationRespawnTimer = 0f;
+        _stationRespawning = false;
+        _stationRespawnTimer = 0f;
         _trainingHostile = false;
     }
 
@@ -698,8 +702,8 @@ public class SystemScene
                     if (q.TargetSystem != _system.Id) continue;
                     if (q.ObjectiveType == "collect" && _lifepodActive)
                         _waypointTargets.Add((new Vector2(_lifepod.X, _lifepod.Y), q.Name));
-                    else if (q.ObjectiveType == "travel")
-                        _waypointTargets.Add((Vector2.Zero, q.Name));
+                    else if ((q.ObjectiveType == "travel" || q.ObjectiveType == "deliver") && _system.Station != null)
+                        _waypointTargets.Add((new Vector2(_station.X, _station.Y), q.Name));
                 }
             }
             // Nearest asteroid waypoint
@@ -1573,7 +1577,7 @@ public class SystemScene
                 _showPickupDialog = true;
             }
 
-            // Training mode station respawn timers
+            // Station respawn timers (training + non-training)
             if (TrainingMode)
             {
                 if (_trainingFriendlyRespawning)
@@ -1602,6 +1606,20 @@ public class SystemScene
                         _pickupTimer = 2f;
                         _showPickupDialog = true;
                     }
+                }
+            }
+
+            if (_stationRespawning)
+            {
+                _stationRespawnTimer -= dt;
+                if (_stationRespawnTimer <= 0f)
+                {
+                    _stationRespawning = false;
+                    _stationHealth = _stationMaxHealth;
+                    InitStationDefenses();
+                    _pickupMessage = "Station defenses restored!";
+                    _pickupTimer = 2f;
+                    _showPickupDialog = true;
                 }
             }
 
@@ -4064,6 +4082,8 @@ public class SystemScene
                 Vector2 qPos;
                 if (q.ObjectiveType == "collect" && _lifepodActive)
                     qPos = new Vector2(_lifepod.X, _lifepod.Y);
+                else if ((q.ObjectiveType == "travel" || q.ObjectiveType == "deliver") && _system.Station != null)
+                    qPos = new Vector2(_station.X, _station.Y);
                 else
                     continue;
                 float qx = cx + qPos.X * scale;
@@ -5241,7 +5261,9 @@ public class SystemScene
                     Timer = 0f,
                     Duration = 1.2f
                 });
-                _pickupMessage = "Station Captured!";
+                _stationRespawning = true;
+                _stationRespawnTimer = 15f;
+                _pickupMessage = "Station Captured! Respawning defenses...";
                 _pickupTimer = 3f;
                 _showPickupDialog = true;
             }
