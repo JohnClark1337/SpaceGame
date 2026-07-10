@@ -1884,19 +1884,28 @@ public class Game1 : Game
         // Top-left info
         DrawSpacedText(_font, $"Credits: {_player.Credits}", new Microsoft.Xna.Framework.Vector2(10, 10), Color.Yellow);
 
-        // Right-side status (fuel, HP, AI info)
+        // Right-side status (fuel, shield, HP, AI info)
         float rightX = ScreenWidth - 300;
+        float meterY = 10;
         DrawSpacedText(_font, $"Fuel: {_player.Fuel:F0}/{_player.MaxFuel}",
-            new Microsoft.Xna.Framework.Vector2(rightX, 10), Color.Gray * 0.6f);
+            new Microsoft.Xna.Framework.Vector2(rightX, meterY), Color.Gray * 0.6f);
+        meterY += 20;
+        if (_player.HasShield)
+        {
+            DrawSpacedText(_font, $"Shield: {_player.ShieldHP:F0}/{_player.MaxShieldHP:F0}",
+                new Microsoft.Xna.Framework.Vector2(rightX, meterY), Color.CornflowerBlue);
+            meterY += 20;
+        }
         DrawSpacedText(_font, $"HP: {_player.Health}/{_player.MaxHealth}",
-            new Microsoft.Xna.Framework.Vector2(rightX, 30), Color.Gray * 0.6f);
+            new Microsoft.Xna.Framework.Vector2(rightX, meterY), Color.Gray * 0.6f);
+        meterY += 25;
 
         string diffStr = _routeManager.Difficulty.ToString();
         int blockedCount = _routeManager.CountBlocked;
         int maxBlocked = _routeManager.MaxBlocked;
         Color aiColor = blockedCount > 0 ? new Color(255, 150, 100) : Color.Gray * 0.6f;
         DrawSpacedText(_font, $"AI [{diffStr}]  Blockades: {blockedCount}/{maxBlocked}",
-            new Microsoft.Xna.Framework.Vector2(rightX, 55), aiColor);
+            new Microsoft.Xna.Framework.Vector2(rightX, meterY), aiColor);
 
         // LLM commander notification
         if (_useLlm)
