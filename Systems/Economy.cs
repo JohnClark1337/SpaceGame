@@ -135,7 +135,7 @@ public class Economy
                 float current = market.Stocks.GetValueOrDefault(resId, 0f);
                 if (current < cap)
                 {
-                    current += rate * dt;
+                    current += rate * dt * 0.02f;
                     if (current > cap) current = cap;
                     market.Stocks[resId] = current;
                 }
